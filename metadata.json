@@ -1,0 +1,7 @@
+{
+  "name": "StoryCanvas AI",
+  "description": "An AI-powered background generator for Instagram Stories that automatically calculates negative space for text and UI elements, ensuring brand consistency.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
