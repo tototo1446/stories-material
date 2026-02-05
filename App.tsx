@@ -2,9 +2,12 @@
 import React, { useState, useEffect } from 'react';
 import { StoryGoal, Atmosphere, BrandConfig, GeneratedImage, StoryScript } from './types';
 import { GOAL_OPTIONS, ATMOSPHERE_OPTIONS, SAMPLE_SCRIPTS } from './constants';
-import { generateStoryBackgrounds } from './services/geminiService';
+import { generateStoryBackgrounds } from './services/imageGenerationService';
 import { EditPalette } from './components/EditPalette';
 import { InstagramOverlay } from './components/InstagramOverlay';
+import { ErrorToast, ToastMessage } from './components/ErrorToast';
+import { downloadImage, downloadAllImages } from './utils/imageDownload';
+import { saveBrandConfig, loadBrandConfig } from './utils/storage';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'brand'>('dashboard');
@@ -22,25 +25,158 @@ const App: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [showOverlay, setShowOverlay] = useState(true);
+  const [progressMessage, setProgressMessage] = useState<string>('');
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [currentSlide, setCurrentSlide] = useState<{ current: number; total: number } | null>(null);
+
+  // 開発環境での環境変数確認
+  useEffect(() => {
+    if (import.meta.env.DEV) {
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+      
+      console.log('環境変数の読み込み状況:', {
+        apiBaseUrl: apiBaseUrl || 'http://localhost:3001 (デフォルト)',
+      });
+      
+      if (!apiBaseUrl) {
+        console.info('ℹ️  VITE_API_BASE_URLが設定されていません。デフォルト値を使用します。');
+      }
+    }
+  }, []);
+
+  // ブランド設定の読み込み
+  useEffect(() => {
+    const savedBrand = loadBrandConfig();
+    if (savedBrand) {
+      setBrand(savedBrand);
+    }
+  }, []);
+
+  // ブランド設定の自動保存
+  useEffect(() => {
+    if (brand.primaryColor !== '#6366f1' || brand.fontPreference !== 'Noto Sans JP Bold' || brand.logoUrl !== '') {
+      saveBrandConfig(brand);
+    }
+  }, [brand]);
 
   const handleGenerate = async () => {
-    setIsGenerating(true);
-    const urls = await generateStoryBackgrounds(theme || scriptInput.substring(0, 20), goal, atmosphere, brand.primaryColor);
-    
-    const newImages: GeneratedImage[] = urls.map((url, index) => ({
-      id: Math.random().toString(36).substr(2, 9),
-      url,
-      prompt: `Theme: ${theme}, Goal: ${goal}`,
-      settings: {
-        blur: 0,
-        brightness: 100,
-        brandOverlay: false
-      }
-    }));
+    if (!scriptInput && !theme) {
+      setToast({
+        id: Date.now().toString(),
+        message: '台本またはテーマを入力してください。',
+        type: 'error',
+      });
+      return;
+    }
 
-    setGeneratedImages(prev => [...newImages, ...prev]);
-    setIsGenerating(false);
-    if (newImages.length > 0) setSelectedImageId(newImages[0].id);
+    setIsGenerating(true);
+    setProgressMessage('画像生成を開始しています...');
+    setCurrentSlide(null);
+    setToast(null);
+
+    try {
+      const newImages = await generateStoryBackgrounds(
+        scriptInput,
+        theme,
+        goal,
+        atmosphere,
+        brand.primaryColor,
+        undefined,
+        {
+          onProgress: (message) => {
+            setProgressMessage(message);
+          },
+          onSlideGenerated: (current, total) => {
+            setCurrentSlide({ current, total });
+          },
+        }
+      );
+
+      if (newImages.length === 0) {
+        setToast({
+          id: Date.now().toString(),
+          message: '画像が生成されませんでした。もう一度お試しください。',
+          type: 'error',
+        });
+      } else {
+        setGeneratedImages(prev => [...newImages, ...prev]);
+        setSelectedImageId(newImages[0].id);
+        setToast({
+          id: Date.now().toString(),
+          message: `${newImages.length}枚の背景画像を生成しました！`,
+          type: 'success',
+        });
+      }
+    } catch (error) {
+      console.error('画像生成エラー:', error);
+      let errorMessage = '画像生成に失敗しました。';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        
+        // ネットワークエラーの場合は具体的な対処法を提示
+        if (errorMessage.includes('接続できません') || errorMessage.includes('Failed to fetch')) {
+          errorMessage = 'バックエンドサーバーに接続できません。\nバックエンドサーバーが起動しているか確認してください。';
+        }
+      }
+      
+      setToast({
+        id: Date.now().toString(),
+        message: errorMessage,
+        type: 'error',
+        duration: 10000,
+      });
+    } finally {
+      setIsGenerating(false);
+      setProgressMessage('');
+      setCurrentSlide(null);
+    }
+  };
+
+  const handleDownloadImage = async (image: GeneratedImage) => {
+    try {
+      const slideNum = image.slideNumber || 1;
+      const extension = image.url.match(/\.(jpg|jpeg|png|gif|webp)/i)?.[1] || 'jpg';
+      const filename = `story-background-slide-${slideNum}.${extension}`;
+      await downloadImage(image.url, filename);
+      setToast({
+        id: Date.now().toString(),
+        message: '画像をダウンロードしました。',
+        type: 'success',
+      });
+    } catch (error) {
+      console.error('ダウンロードエラー:', error);
+      setToast({
+        id: Date.now().toString(),
+        message: '画像のダウンロードに失敗しました。',
+        type: 'error',
+      });
+    }
+  };
+
+  const handleDownloadAll = async () => {
+    if (generatedImages.length === 0) return;
+
+    try {
+      setToast({
+        id: Date.now().toString(),
+        message: 'すべての画像をダウンロードしています...',
+        type: 'info',
+      });
+      await downloadAllImages(generatedImages);
+      setToast({
+        id: Date.now().toString(),
+        message: `${generatedImages.length}枚の画像をダウンロードしました。`,
+        type: 'success',
+      });
+    } catch (error) {
+      console.error('一括ダウンロードエラー:', error);
+      setToast({
+        id: Date.now().toString(),
+        message: '一部の画像のダウンロードに失敗しました。',
+        type: 'error',
+      });
+    }
   };
 
   const updateImageSettings = (id: string, updates: Partial<GeneratedImage['settings']>) => {
@@ -164,6 +300,25 @@ const App: React.FC = () => {
                     </div>
                   </div>
 
+                  {isGenerating && progressMessage && (
+                    <div className="bg-slate-900/50 border border-slate-700 rounded-2xl p-4">
+                      <p className="text-sm text-slate-300 mb-2">{progressMessage}</p>
+                      {currentSlide && (
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-indigo-500 rounded-full transition-all duration-300"
+                              style={{ width: `${(currentSlide.current / currentSlide.total) * 100}%` }}
+                            />
+                          </div>
+                          <span className="text-xs text-slate-400 font-mono">
+                            {currentSlide.current}/{currentSlide.total}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <button
                     onClick={handleGenerate}
                     disabled={isGenerating || (!theme && !scriptInput)}
@@ -175,7 +330,7 @@ const App: React.FC = () => {
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
-                        生成中...
+                        {currentSlide ? `生成中... (${currentSlide.current}/${currentSlide.total})` : '生成中...'}
                       </>
                     ) : (
                       <>
@@ -243,10 +398,22 @@ const App: React.FC = () => {
                       
                       {selectedImage && (
                         <div className="mt-6 flex gap-4">
-                          <button className="flex-1 py-4 bg-white text-slate-900 font-bold rounded-2xl hover:bg-slate-200 transition-colors flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleDownloadImage(selectedImage)}
+                            className="flex-1 py-4 bg-white text-slate-900 font-bold rounded-2xl hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"
+                          >
                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                             背景を保存
                           </button>
+                          {generatedImages.length > 1 && (
+                            <button
+                              onClick={handleDownloadAll}
+                              className="px-6 py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-500 transition-colors flex items-center justify-center gap-2"
+                            >
+                              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                              すべて保存
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -356,7 +523,15 @@ const App: React.FC = () => {
               <div className="flex justify-end gap-4">
                 <button className="px-8 py-3 rounded-2xl bg-slate-800 text-white font-bold hover:bg-slate-700 transition-colors">キャンセル</button>
                 <button 
-                  onClick={() => setActiveTab('dashboard')}
+                  onClick={() => {
+                    saveBrandConfig(brand);
+                    setActiveTab('dashboard');
+                    setToast({
+                      id: Date.now().toString(),
+                      message: 'ブランド設定を保存しました。',
+                      type: 'success',
+                    });
+                  }}
                   className="px-10 py-3 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-500 transition-all shadow-xl shadow-indigo-600/20"
                 >
                   設定を保存して生成へ
@@ -366,6 +541,9 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
+
+      {/* Toast Notification */}
+      <ErrorToast message={toast} onClose={() => setToast(null)} />
     </div>
   );
 };
