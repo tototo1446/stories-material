@@ -5,6 +5,15 @@ import { StoryGoal, Atmosphere } from './types';
 export const GOAL_OPTIONS = Object.values(StoryGoal);
 export const ATMOSPHERE_OPTIONS = Object.values(Atmosphere);
 
+export const FONT_MAP: Record<string, { family: string; weight: number }> = {
+  'Noto Sans JP Bold': { family: "'Noto Sans JP', sans-serif", weight: 700 },
+  'Inter Extra Bold': { family: "'Inter', sans-serif", weight: 800 },
+  'M PLUS Rounded 1c': { family: "'M PLUS Rounded 1c', sans-serif", weight: 700 },
+  'Shippori Mincho': { family: "'Shippori Mincho', serif", weight: 400 },
+};
+
+export const DEFAULT_FONT = { family: "'Noto Sans JP', sans-serif", weight: 700 };
+
 export const IG_SAFE_AREA_CONFIG = {
   topMargin: '12%', // For profile pic and handle
   bottomMargin: '15%', // For reply bar

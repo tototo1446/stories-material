@@ -1,10 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
-import { StoryGoal, Atmosphere, BrandConfig, GeneratedImage, StoryScript } from './types';
-import { GOAL_OPTIONS, ATMOSPHERE_OPTIONS, SAMPLE_SCRIPTS } from './constants';
+import { StoryGoal, Atmosphere, BrandConfig, GeneratedImage } from './types';
+import { GOAL_OPTIONS, ATMOSPHERE_OPTIONS, SAMPLE_SCRIPTS, FONT_MAP, DEFAULT_FONT } from './constants';
 import { generateStoryBackgrounds } from './services/imageGenerationService';
 import { EditPalette } from './components/EditPalette';
 import { InstagramOverlay } from './components/InstagramOverlay';
+import { TextOverlay } from './components/TextOverlay';
+import { GeneratingOverlay } from './components/GeneratingOverlay';
 import { ErrorToast, ToastMessage } from './components/ErrorToast';
 import { downloadImage, downloadAllImages } from './utils/imageDownload';
 import { saveBrandConfig, loadBrandConfig } from './utils/storage';
@@ -32,14 +34,14 @@ const App: React.FC = () => {
   // 開発環境での環境変数確認
   useEffect(() => {
     if (import.meta.env.DEV) {
-      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
-      
+      const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
       console.log('環境変数の読み込み状況:', {
-        apiBaseUrl: apiBaseUrl || 'http://localhost:3001 (デフォルト)',
+        geminiApiKey: geminiApiKey ? `${geminiApiKey.substring(0, 10)}...` : '未設定',
       });
-      
-      if (!apiBaseUrl) {
-        console.info('ℹ️  VITE_API_BASE_URLが設定されていません。デフォルト値を使用します。');
+
+      if (!geminiApiKey) {
+        console.warn('⚠️  VITE_GEMINI_API_KEYが設定されていません。Gemini APIを使用できません。');
       }
     }
   }, []);
@@ -116,7 +118,7 @@ const App: React.FC = () => {
         
         // ネットワークエラーの場合は具体的な対処法を提示
         if (errorMessage.includes('接続できません') || errorMessage.includes('Failed to fetch')) {
-          errorMessage = 'バックエンドサーバーに接続できません。\nバックエンドサーバーが起動しているか確認してください。';
+          errorMessage = 'Gemini APIに接続できません。\nネットワーク接続とAPIキーの設定を確認してください。';
         }
       }
       
@@ -136,7 +138,9 @@ const App: React.FC = () => {
   const handleDownloadImage = async (image: GeneratedImage) => {
     try {
       const slideNum = image.slideNumber || 1;
-      const extension = image.url.match(/\.(jpg|jpeg|png|gif|webp)/i)?.[1] || 'jpg';
+      const mimeMatch = image.url.match(/^data:image\/(png|jpeg|jpg|gif|webp)/i);
+      const urlMatch = image.url.match(/\.(jpg|jpeg|png|gif|webp)/i);
+      const extension = mimeMatch ? (mimeMatch[1] === 'jpeg' ? 'jpg' : mimeMatch[1]) : urlMatch?.[1] || 'png';
       const filename = `story-background-slide-${slideNum}.${extension}`;
       await downloadImage(image.url, filename);
       setToast({
@@ -300,25 +304,6 @@ const App: React.FC = () => {
                     </div>
                   </div>
 
-                  {isGenerating && progressMessage && (
-                    <div className="bg-slate-900/50 border border-slate-700 rounded-2xl p-4">
-                      <p className="text-sm text-slate-300 mb-2">{progressMessage}</p>
-                      {currentSlide && (
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-indigo-500 rounded-full transition-all duration-300"
-                              style={{ width: `${(currentSlide.current / currentSlide.total) * 100}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-slate-400 font-mono">
-                            {currentSlide.current}/{currentSlide.total}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
                   <button
                     onClick={handleGenerate}
                     disabled={isGenerating || (!theme && !scriptInput)}
@@ -374,25 +359,38 @@ const App: React.FC = () => {
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
                     {/* Active Preview */}
                     <div className="relative group">
-                      <div 
-                        className="instagram-aspect rounded-[40px] overflow-hidden bg-slate-900 border-4 border-slate-800 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] relative"
-                        style={{
-                          filter: `blur(${selectedImage?.settings.blur || 0}px) brightness(${selectedImage?.settings.brightness || 100}%)`,
-                        }}
-                      >
-                        {selectedImage ? (
-                          <>
-                            <img src={selectedImage.url} alt="Preview" className="w-full h-full object-cover" />
-                            {selectedImage.settings.brandOverlay && (
-                              <div className="absolute inset-0 pointer-events-none mix-blend-overlay opacity-30" style={{ backgroundColor: brand.primaryColor }} />
-                            )}
-                          </>
-                        ) : (
-                          <div className="w-full h-full flex flex-col items-center justify-center p-12 text-center text-slate-500">
-                            <svg className="w-16 h-16 mb-4 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                            <p className="text-sm">画像が生成されるとここに表示されます</p>
-                          </div>
+                      <div className="instagram-aspect rounded-[40px] overflow-hidden bg-slate-900 border-4 border-slate-800 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] relative">
+                        {/* Layer 1: Filtered background */}
+                        <div
+                          className="absolute inset-0"
+                          style={{
+                            filter: `blur(${selectedImage?.settings.blur || 0}px) brightness(${selectedImage?.settings.brightness || 100}%)`,
+                          }}
+                        >
+                          {selectedImage ? (
+                            <>
+                              <img src={selectedImage.url} alt="Preview" className="w-full h-full object-cover" />
+                              {selectedImage.settings.brandOverlay && (
+                                <div className="absolute inset-0 pointer-events-none mix-blend-overlay opacity-30" style={{ backgroundColor: brand.primaryColor }} />
+                              )}
+                            </>
+                          ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center p-12 text-center text-slate-500">
+                              <svg className="w-16 h-16 mb-4 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                              <p className="text-sm">画像が生成されるとここに表示されます</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Layer 2: Text overlay (unfiltered) */}
+                        {selectedImage?.settings.textOverlay && (
+                          <TextOverlay
+                            textOverlay={selectedImage.settings.textOverlay}
+                            fontPreference={brand.fontPreference}
+                          />
                         )}
+
+                        {/* Layer 3: Instagram guide (unfiltered) */}
                         {showOverlay && <InstagramOverlay />}
                       </div>
                       
@@ -490,10 +488,36 @@ const App: React.FC = () => {
                     <div className="w-2 h-2 bg-purple-500 rounded-full" />
                     ロゴアップロード
                   </h4>
-                  <div className="border-2 border-dashed border-slate-700 rounded-2xl h-32 flex flex-col items-center justify-center hover:bg-slate-700/50 transition-colors cursor-pointer group">
-                    <svg className="w-8 h-8 text-slate-500 mb-2 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0l-4-4m4 4v12" /></svg>
-                    <p className="text-xs text-slate-500">透過PNG推奨</p>
-                  </div>
+                  {brand.logoUrl ? (
+                    <div className="relative border-2 border-slate-700 rounded-2xl h-32 flex items-center justify-center bg-slate-900/50">
+                      <img src={brand.logoUrl} alt="Logo" className="max-h-24 max-w-full object-contain" />
+                      <button
+                        onClick={() => setBrand({ ...brand, logoUrl: '' })}
+                        className="absolute top-2 right-2 w-6 h-6 bg-red-600 hover:bg-red-500 rounded-full flex items-center justify-center text-white text-xs transition-colors"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="border-2 border-dashed border-slate-700 rounded-2xl h-32 flex flex-col items-center justify-center hover:bg-slate-700/50 transition-colors cursor-pointer group">
+                      <svg className="w-8 h-8 text-slate-500 mb-2 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0l-4-4m4 4v12" /></svg>
+                      <p className="text-xs text-slate-500">透過PNG推奨</p>
+                      <input
+                        type="file"
+                        accept="image/png,image/svg+xml,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            setBrand({ ...brand, logoUrl: reader.result as string });
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                    </label>
+                  )}
                 </div>
               </div>
 
@@ -501,21 +525,26 @@ const App: React.FC = () => {
                 <h4 className="text-lg font-bold mb-6">定型フォント指示</h4>
                 <div className="space-y-6">
                   <div className="flex flex-wrap gap-4">
-                    {['Noto Sans JP Bold', 'Inter Extra Bold', 'M PLUS Rounded 1c', 'Shippori Mincho'].map(f => (
-                      <button 
-                        key={f}
-                        onClick={() => setBrand({ ...brand, fontPreference: f })}
-                        className={`px-6 py-3 rounded-2xl border text-sm transition-all ${brand.fontPreference === f ? 'bg-white text-slate-900 font-bold border-white' : 'bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500'}`}
+                    {Object.keys(FONT_MAP).map(label => (
+                      <button
+                        key={label}
+                        onClick={() => setBrand({ ...brand, fontPreference: label })}
+                        className={`px-6 py-3 rounded-2xl border text-sm transition-all ${brand.fontPreference === label ? 'bg-white text-slate-900 font-bold border-white' : 'bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500'}`}
                       >
-                        {f}
+                        {label}
                       </button>
                     ))}
                   </div>
                   <div className="p-6 bg-slate-900 rounded-2xl">
                     <p className="text-slate-500 text-xs mb-4 uppercase tracking-widest font-bold">Preview Text</p>
-                    <p className="text-4xl font-bold" style={{ fontFamily: brand.fontPreference }}>
-                      The quick brown fox jumps over the lazy dog.
-                    </p>
+                    {(() => {
+                      const current = FONT_MAP[brand.fontPreference] || DEFAULT_FONT;
+                      return (
+                        <p className="text-4xl" style={{ fontFamily: current.family, fontWeight: current.weight }}>
+                          The quick brown fox jumps over the lazy dog.
+                        </p>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -541,6 +570,13 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
+
+      {/* Generating Overlay */}
+      <GeneratingOverlay
+        isVisible={isGenerating}
+        message={progressMessage}
+        progress={currentSlide ?? undefined}
+      />
 
       {/* Toast Notification */}
       <ErrorToast message={toast} onClose={() => setToast(null)} />

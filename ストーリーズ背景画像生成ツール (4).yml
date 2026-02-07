@@ -1,0 +1,852 @@
+app:
+  description: ストーリーズ台本から「文字入れ専用」背景画像を一括生成するワークフロー。InstagramのUIや文字配置を考慮した余白（ネガティブスペース）を計算し、ブランドカラーに合わせた画像を生成します。Dify
+    Cloud対応：画像をbase64エンコードして出力。
+  icon: 🤖
+  icon_background: '#E4FBCC'
+  mode: workflow
+  name: ストーリーズ背景画像生成ツール
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/gemini:0.7.5@13e7f1c10c3844d943714bd74bfc4fe26a21fae32efbe678858d6ac5079b2b3e
+    version: null
+kind: app
+version: 0.5.0
+workflow:
+  conversation_variables: []
+  environment_variables:
+  - description: Ideogram APIキー
+    id: 5b2a5ecb-ba17-4431-b5c2-46e308f48f17
+    name: IDEOGRAM_API_KEY
+    selector:
+    - env
+    - IDEOGRAM_API_KEY
+    value: ''
+    value_type: secret
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        attachment_image_file_size_limit: 2
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        file_upload_limit: 50
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        single_chunk_attachment_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: start
+        targetType: llm
+      id: edge_1
+      source: start_1
+      sourceHandle: source
+      target: llm_script_analysis
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: code
+      id: edge_2
+      source: llm_script_analysis
+      sourceHandle: source
+      target: code_parse_slides
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: code
+      id: edge_5
+      source: code_format_result
+      sourceHandle: source
+      target: code_base64_convert
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: end
+      id: edge_6_base64_to_end
+      source: code_base64_convert
+      sourceHandle: source
+      target: end_1
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: iteration
+      id: code_parse_slides-source-1770215929047-target
+      source: code_parse_slides
+      sourceHandle: source
+      target: '1770215929047'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: true
+        isInLoop: false
+        iteration_id: '1770215929047'
+        sourceType: iteration-start
+        targetType: llm
+      id: 1770215929047start-source-1770215931878-target
+      source: 1770215929047start
+      sourceHandle: source
+      target: '1770215931878'
+      targetHandle: target
+      type: custom
+      zIndex: 1002
+    - data:
+        isInIteration: true
+        isInLoop: false
+        iteration_id: '1770215929047'
+        sourceType: llm
+        targetType: llm
+      id: 1770215931878-source-1770216163260-target
+      source: '1770215931878'
+      sourceHandle: source
+      target: '1770216163260'
+      targetHandle: target
+      type: custom
+      zIndex: 1002
+    - data:
+        isInLoop: false
+        sourceType: iteration
+        targetType: code
+      id: 1770215929047-source-code_format_result-target
+      source: '1770215929047'
+      sourceHandle: source
+      target: code_format_result
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        selected: false
+        title: 開始
+        type: start
+        variables:
+        - label: ストーリーズ台本
+          max_length: 10000
+          options: []
+          required: true
+          type: paragraph
+          variable: script
+        - label: テーマ
+          max_length: 200
+          options: []
+          required: true
+          type: text-input
+          variable: theme
+        - label: ストーリーの目的
+          options:
+          - 共感
+          - 教育
+          - 販売促進
+          - ブランド認知
+          - エンゲージメント
+          required: true
+          type: select
+          variable: purpose
+        - label: 雰囲気・スタイル
+          options:
+          - ミニマル・シンプル
+          - ナチュラル・オーガニック
+          - モダン・洗練
+          - ポップ・カラフル
+          - 高級感・エレガント
+          - カジュアル・親しみやすい
+          required: true
+          type: select
+          variable: mood
+        - default: '#FFFFFF'
+          label: メインカラー（HEX）
+          max_length: 7
+          options: []
+          required: false
+          type: text-input
+          variable: brand_color
+        - default: '#000000'
+          label: サブカラー（HEX）
+          max_length: 7
+          options: []
+          required: false
+          type: text-input
+          variable: sub_color
+      height: 239
+      id: start_1
+      position:
+        x: 0
+        y: 300
+      positionAbsolute:
+        x: 0
+        y: 300
+      selected: false
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        model:
+          completion_params:
+            temperature: 0.3
+          mode: chat
+          name: gemini-2.0-flash
+          provider: langgenius/gemini/google
+        prompt_template:
+        - id: f50bf1f7-f748-4331-b96e-fddc843df5f1
+          role: system
+          text: 'あなたはInstagramストーリーズの専門家です。
+
+            ユーザーが入力した台本を分析し、各スライドの情報を構造化してください。
+
+
+            ## 出力ルール
+
+            - 台本から各スライド（ストーリーズ1枚分）を識別
+
+            - 各スライドの「意図」「キーメッセージ」「推奨構図」を分析
+
+            - 必ず以下のJSON形式で出力
+
+
+            ## 推奨構図パターン
+
+            - center_focus: 中央に大きな余白、上下に装飾（教育・説明向け）
+
+            - top_heavy: 上部に画像要素、下半分に余白（CTA・販売向け）
+
+            - bottom_heavy: 下部に画像要素、上半分に余白（挨拶・導入向け）
+
+            - split_horizontal: 上下で分割、中央に余白帯（比較・ビフォーアフター向け）
+
+            - frame_style: 四隅に装飾、中央に大きな余白（メッセージ重視向け）
+
+            - gradient_fade: グラデーションで一方向にフェード（感情訴求向け）
+
+            '
+        - id: d4955778-d1d7-4f1f-a397-b6c4df35ba8c
+          role: user
+          text: '## 台本
+
+            {{#start_1.script#}}
+
+
+            ## テーマ
+
+            {{#start_1.theme#}}
+
+
+            ## 目的
+
+            {{#start_1.purpose#}}
+
+
+            上記の台本を分析し、各スライドの情報をJSON形式で出力してください。
+
+            '
+        selected: false
+        structured_output:
+          schema:
+            additionalProperties: false
+            properties:
+              slides:
+                description: 各スライドの分析結果
+                items:
+                  additionalProperties: false
+                  properties:
+                    intent:
+                      description: このスライドの意図・目的
+                      type: string
+                    key_message:
+                      description: キーメッセージ（文字として載せる内容の要約）
+                      type: string
+                    layout:
+                      description: 推奨構図パターン
+                      enum:
+                      - center_focus
+                      - top_heavy
+                      - bottom_heavy
+                      - split_horizontal
+                      - frame_style
+                      - gradient_fade
+                      type: string
+                    slide_number:
+                      description: スライド番号
+                      type: integer
+                    text_content:
+                      description: スライドに表示するテキスト内容
+                      type: string
+                  required:
+                  - slide_number
+                  - intent
+                  - key_message
+                  - layout
+                  - text_content
+                  type: object
+                type: array
+              total_slides:
+                description: 総スライド数
+                type: integer
+            required:
+            - slides
+            - total_slides
+            type: object
+        structured_output_enabled: true
+        title: 台本分析
+        type: llm
+        vision:
+          enabled: false
+      height: 88
+      id: llm_script_analysis
+      position:
+        x: 300
+        y: 300
+      positionAbsolute:
+        x: 300
+        y: 300
+      selected: false
+      type: custom
+      width: 242
+    - data:
+        code: "import json\n\ndef main(llm_output: str, mood: str, brand_color: str,\
+          \ sub_color: str) -> dict:\n    \"\"\"\n    LLMの出力をパースしてイテレーション用の配列を作成\n\
+          \    \"\"\"\n    try:\n        data = json.loads(llm_output)\n        slides\
+          \ = data.get(\"slides\", [])\n        \n        # 各スライドに追加情報を付与\n      \
+          \  enriched_slides = []\n        for slide in slides:\n            slide[\"\
+          mood\"] = mood\n            slide[\"brand_color\"] = brand_color\n     \
+          \       slide[\"sub_color\"] = sub_color\n            enriched_slides.append(json.dumps(slide,\
+          \ ensure_ascii=False))\n        \n        return {\n            \"slides_array\"\
+          : enriched_slides,\n            \"total_count\": len(enriched_slides)\n\
+          \        }\n    except Exception as e:\n        return {\n            \"\
+          slides_array\": [],\n            \"total_count\": 0\n        }\n"
+        code_language: python3
+        outputs:
+          slides_array:
+            children: null
+            type: array[string]
+          total_count:
+            children: null
+            type: number
+        selected: false
+        title: スライド配列化
+        type: code
+        variables:
+        - value_selector:
+          - llm_script_analysis
+          - text
+          value_type: string
+          variable: llm_output
+        - value_selector:
+          - start_1
+          - mood
+          value_type: string
+          variable: mood
+        - value_selector:
+          - start_1
+          - brand_color
+          value_type: string
+          variable: brand_color
+        - value_selector:
+          - start_1
+          - sub_color
+          value_type: string
+          variable: sub_color
+      height: 52
+      id: code_parse_slides
+      position:
+        x: 600
+        y: 300
+      positionAbsolute:
+        x: 600
+        y: 300
+      selected: false
+      type: custom
+      width: 242
+    - data:
+        code: "import json\nimport re\n\ndef main(api_responses: list, total_count:\
+          \ int) -> dict:\n    \"\"\"\n    画像生成の出力から画像URL等を抽出して整形\n    Gemini LLM\
+          \ / Ideogram API 両方の出力形式に対応\n    \"\"\"\n    results = []\n    \n    for\
+          \ i, response_str in enumerate(api_responses):\n        try:\n         \
+          \   image_url = \"\"\n            prompt_used = \"\"\n            \n   \
+          \         if not response_str or (isinstance(response_str, str) and response_str.strip()\
+          \ == \"\"):\n                # 空文字列の場合（Gemini LLMのtext出力が空の場合）\n       \
+          \         results.append({\n                    \"slide_number\": i + 1,\n\
+          \                    \"image_url\": \"\",\n                    \"prompt_used\"\
+          : \"\",\n                    \"resolution\": \"\",\n                   \
+          \ \"status\": \"error\",\n                    \"error_message\": \"LLM text\
+          \ output is empty - image may be in files output\"\n                })\n\
+          \                continue\n            \n            if isinstance(response_str,\
+          \ dict):\n                # 辞書型の場合（ファイルオブジェクト等）\n                image_url\
+          \ = response_str.get(\"url\", \"\") or response_str.get(\"image_url\", \"\
+          \")\n                prompt_used = response_str.get(\"prompt\", \"\") or\
+          \ response_str.get(\"prompt_used\", \"\")\n            elif isinstance(response_str,\
+          \ str):\n                # URL形式の場合\n                if response_str.strip().startswith(\"\
+          http\"):\n                    image_url = response_str.strip()\n       \
+          \         else:\n                    # JSON形式を試行\n                    try:\n\
+          \                        response = json.loads(response_str)\n         \
+          \               if isinstance(response, dict):\n                       \
+          \     # Ideogram API形式\n                            data = response.get(\"\
+          data\", [])\n                            if data and len(data) > 0:\n  \
+          \                              image_info = data[0]\n                  \
+          \              image_url = image_info.get(\"url\", \"\")\n             \
+          \                   prompt_used = image_info.get(\"prompt\", \"\")\n   \
+          \                         else:\n                                image_url\
+          \ = response.get(\"url\", \"\") or response.get(\"image_url\", \"\")\n \
+          \                           prompt_used = response.get(\"prompt\", \"\"\
+          )\n                    except (json.JSONDecodeError, ValueError):\n    \
+          \                    # URLが含まれているか探す\n                        url_match\
+          \ = re.search(r'https?://\\S+', response_str)\n                        if\
+          \ url_match:\n                            image_url = url_match.group(0)\n\
+          \            \n            if image_url:\n                results.append({\n\
+          \                    \"slide_number\": i + 1,\n                    \"image_url\"\
+          : image_url,\n                    \"prompt_used\": prompt_used,\n      \
+          \              \"resolution\": \"1080x1920\",\n                    \"status\"\
+          : \"success\"\n                })\n            else:\n                results.append({\n\
+          \                    \"slide_number\": i + 1,\n                    \"image_url\"\
+          : \"\",\n                    \"prompt_used\": str(response_str)[:200],\n\
+          \                    \"resolution\": \"\",\n                    \"status\"\
+          : \"error\",\n                    \"error_message\": f\"No image URL found\
+          \ in output: {str(response_str)[:100]}\"\n                })\n        except\
+          \ Exception as e:\n            results.append({\n                \"slide_number\"\
+          : i + 1,\n                \"image_url\": \"\",\n                \"prompt_used\"\
+          : \"\",\n                \"resolution\": \"\",\n                \"status\"\
+          : \"error\",\n                \"error_message\": str(e)\n            })\n\
+          \    \n    success_count = len([r for r in results if r[\"status\"] == \"\
+          success\"])\n    \n    return {\n        \"generated_images\": results,\n\
+          \        \"total_requested\": total_count,\n        \"success_count\": success_count,\n\
+          \        \"summary\": f\"{success_count}/{total_count}枚の背景画像を生成しました\"\n\
+          \    }\n"
+        code_language: python3
+        outputs:
+          generated_images:
+            children: null
+            type: array[object]
+          success_count:
+            children: null
+            type: number
+          summary:
+            children: null
+            type: string
+          total_requested:
+            children: null
+            type: number
+        selected: false
+        title: 結果整形
+        type: code
+        variables:
+        - value_selector:
+          - '1770215929047'
+          - output
+          value_type: array[string]
+          variable: api_responses
+        - value_selector:
+          - code_parse_slides
+          - total_count
+          value_type: number
+          variable: total_count
+      height: 52
+      id: code_format_result
+      position:
+        x: 1936
+        y: 300
+      positionAbsolute:
+        x: 1936
+        y: 300
+      selected: false
+      type: custom
+      width: 242
+    - data:
+        code: "import json\nimport base64\nimport urllib.request\nimport ssl\n\ndef\
+          \ main(generated_images: list, total_requested: int, success_count: int,\
+          \ summary: str) -> dict:\n    \"\"\"\n    画像URLをbase64エンコードして出力に含める。\n \
+          \   Dify内部からはupload.dify.aiにアクセスできるため、\n    ここでダウンロード→base64変換を行う。\n   \
+          \ \"\"\"\n    ctx = ssl.create_default_context()\n    ctx.check_hostname\
+          \ = False\n    ctx.verify_mode = ssl.CERT_NONE\n\n    results = []\n   \
+          \ b64_success = 0\n\n    for img in generated_images:\n        if img.get('status')\
+          \ == 'success' and img.get('image_url'):\n            try:\n           \
+          \     req = urllib.request.Request(\n                    img['image_url'],\n\
+          \                    headers={'User-Agent': 'Mozilla/5.0'}\n           \
+          \     )\n                with urllib.request.urlopen(req, context=ctx, timeout=30)\
+          \ as response:\n                    image_data = response.read()\n     \
+          \               content_type = response.headers.get('Content-Type', 'image/jpeg')\n\
+          \                    b64_str = base64.b64encode(image_data).decode('utf-8')\n\
+          \                    img['image_base64'] = f\"data:{content_type};base64,{b64_str}\"\
+          \n                    b64_success += 1\n            except Exception as\
+          \ e:\n                img['image_base64'] = None\n                img['base64_error']\
+          \ = str(e)\n        results.append(img)\n\n    return {\n        \"result\"\
+          : results,\n        \"total_requested\": total_requested,\n        \"success_count\"\
+          : success_count,\n        \"base64_success_count\": b64_success,\n     \
+          \   \"summary\": summary\n    }\n"
+        code_language: python3
+        outputs:
+          base64_success_count:
+            children: null
+            type: number
+          result:
+            children: null
+            type: array[object]
+          success_count:
+            children: null
+            type: number
+          summary:
+            children: null
+            type: string
+          total_requested:
+            children: null
+            type: number
+        selected: false
+        title: Base64変換
+        type: code
+        variables:
+        - value_selector:
+          - code_format_result
+          - generated_images
+          value_type: array[object]
+          variable: generated_images
+        - value_selector:
+          - code_format_result
+          - total_requested
+          value_type: number
+          variable: total_requested
+        - value_selector:
+          - code_format_result
+          - success_count
+          value_type: number
+          variable: success_count
+        - value_selector:
+          - code_format_result
+          - summary
+          value_type: string
+          variable: summary
+      height: 52
+      id: code_base64_convert
+      position:
+        x: 2236
+        y: 300
+      positionAbsolute:
+        x: 2236
+        y: 300
+      selected: false
+      type: custom
+      width: 242
+    - data:
+        outputs:
+        - value_selector:
+          - code_base64_convert
+          - summary
+          variable: summary
+        - value_selector:
+          - code_base64_convert
+          - result
+          variable: result
+        - value_selector:
+          - code_base64_convert
+          - total_requested
+          variable: total_requested
+        - value_selector:
+          - code_base64_convert
+          - success_count
+          variable: success_count
+        - value_selector:
+          - code_base64_convert
+          - base64_success_count
+          variable: base64_success_count
+        selected: false
+        title: 終了
+        type: end
+      height: 192
+      id: end_1
+      position:
+        x: 2536
+        y: 300
+      positionAbsolute:
+        x: 2536
+        y: 300
+      selected: false
+      type: custom
+      width: 242
+    - data:
+        error_handle_mode: terminated
+        flatten_output: true
+        height: 199
+        is_parallel: false
+        iterator_input_type: array[string]
+        iterator_selector:
+        - code_parse_slides
+        - slides_array
+        output_selector:
+        - '1770216163260'
+        - text
+        output_type: array[string]
+        parallel_nums: 10
+        selected: false
+        start_node_id: 1770215929047start
+        title: 画像生成ループ
+        type: iteration
+        width: 906
+      height: 199
+      id: '1770215929047'
+      position:
+        x: 884.5
+        y: 300
+      positionAbsolute:
+        x: 884.5
+        y: 300
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 906
+      zIndex: 1
+    - data:
+        desc: ''
+        isInIteration: true
+        selected: false
+        title: ''
+        type: iteration-start
+      draggable: false
+      height: 48
+      id: 1770215929047start
+      parentId: '1770215929047'
+      position:
+        x: 24
+        y: 68
+      positionAbsolute:
+        x: 908.5
+        y: 368
+      selectable: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom-iteration-start
+      width: 44
+      zIndex: 1002
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        isInIteration: true
+        isInLoop: false
+        iteration_id: '1770215929047'
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: gemini-2.0-flash
+          provider: langgenius/gemini/google
+        prompt_template:
+        - id: ca0afad1-84fd-4579-8011-81e7a3325beb
+          role: system
+          text: 'あなたは画像生成AI用のプロンプトエンジニアです。
+
+            Instagramストーリーズ（9:16、1080x1920px）用の背景画像を生成するための英語プロンプトを作成してください。
+
+
+            ## 重要：余白（ネガティブスペース）の確保
+
+            Instagramストーリーズでは以下のUI要素と重ならないよう余白を確保する必要があります：
+
+            - 上部120px: ユーザーアイコン、ユーザー名、閉じるボタン
+
+            - 下部200px: 返信入力欄、シェアボタン、いいねボタン
+
+            - 中央部分: ユーザーが文字を載せるメイン領域
+
+
+            ## 構図パターン別の指示
+
+            - center_focus: 中央に大きな空白、上下端のみに抽象的な装飾要素
+
+            - top_heavy: 上部1/3に視覚要素、下部2/3は単色またはグラデーション
+
+            - bottom_heavy: 上部2/3は単色またはグラデーション、下部1/3に視覚要素
+
+            - split_horizontal: 上下に装飾帯、中央50%は余白
+
+            - frame_style: 四隅に小さな装飾、中央80%は余白
+
+            - gradient_fade: 一方向から他方向へのグラデーション、文字領域は薄い色
+
+
+            ## プロンプト構成ルール
+
+            1. 「9:16 vertical format, Instagram story background」で開始
+
+            2. 構図パターンに基づく余白指示
+
+            3. 雰囲気・スタイルの指定
+
+            4. カラーパレット（HEXコードを色名に変換）
+
+            5. 「space for text overlay」「negative space for typography」等の余白強調
+
+            6. 「no text, no letters, no words」で文字なし指定
+
+            '
+        - id: 5dfed8fc-a133-425f-bbdd-a4dbd265d3cd
+          role: user
+          text: '## スライド情報
+
+            {{#1770215929047.item#}}
+
+
+            上記の情報から、画像生成用の英語プロンプトを作成してください。
+
+            プロンプトのみを出力し、説明は不要です。
+
+            '
+        selected: false
+        structured_output:
+          schema:
+            additionalProperties: false
+            properties:
+              negative_prompt:
+                description: 除外要素のネガティブプロンプト（英語）
+                type: string
+              prompt:
+                description: 画像生成用のメインプロンプト（英語）
+                type: string
+            required:
+            - prompt
+            - negative_prompt
+            type: object
+        structured_output_enabled: true
+        title: プロンプト生成
+        type: llm
+        vision:
+          enabled: false
+      height: 88
+      id: '1770215931878'
+      parentId: '1770215929047'
+      position:
+        x: 126.75
+        y: 68
+      positionAbsolute:
+        x: 1011.25
+        y: 368
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 1002
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        isInIteration: true
+        isInLoop: false
+        iteration_id: '1770215929047'
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: gemini-3-pro-image-preview
+          provider: langgenius/gemini/google
+        prompt_template:
+        - id: fc3bde1f-9a29-4a75-9c8d-7980e4c5fab8
+          role: system
+          text: 'You are an image generation assistant. Generate a single Instagram
+            Story background image based on the user''s prompt.
+
+
+            Rules:
+
+            - 9:16 vertical portrait orientation
+
+            - The image must have clear negative space in the center area for text
+            overlay
+
+            - DO NOT include any text, letters, words, numbers, or watermarks in the
+            image
+
+            - Professional quality, clean composition
+
+            - Ensure the center 50-60% of the image has low visual complexity (solid
+            color, soft gradient, or subtle texture) so text can be placed on top'
+        - id: a58702ce-5631-4cb8-9df9-af0bc803c81e
+          role: user
+          text: 'Generate an image based on the following prompt:
+
+
+            {{#1770215931878.text#}}
+
+
+            Generate the image now. Output only the image.'
+        selected: false
+        title: 画像生成
+        type: llm
+        vision:
+          enabled: false
+      height: 88
+      id: '1770216163260'
+      parentId: '1770215929047'
+      position:
+        x: 430
+        y: 69.25
+      positionAbsolute:
+        x: 1314.5
+        y: 369.25
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 1002
+    viewport:
+      x: -1698.6000000000001
+      y: 27.69999999999999
+      zoom: 0.8
+  rag_pipeline_variables: []

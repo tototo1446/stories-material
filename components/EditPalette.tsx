@@ -64,6 +64,87 @@ export const EditPalette: React.FC<EditPaletteProps> = ({ image, onUpdate, brand
           />
         </div>
 
+        {/* Text Overlay Controls */}
+        <div className="pt-6 border-t border-slate-700 space-y-6">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-slate-300">テキスト表示</label>
+            <button
+              onClick={() => onUpdate({
+                textOverlay: {
+                  ...image.settings.textOverlay,
+                  textVisible: !image.settings.textOverlay.textVisible,
+                },
+              })}
+              className={`w-12 h-6 rounded-full transition-colors relative ${image.settings.textOverlay.textVisible ? 'bg-indigo-600' : 'bg-slate-600'}`}
+            >
+              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${image.settings.textOverlay.textVisible ? 'translate-x-7' : 'translate-x-1'}`} />
+            </button>
+          </div>
+
+          {image.settings.textOverlay.textVisible && (
+            <>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">テキスト内容</label>
+                <textarea
+                  value={image.settings.textOverlay.textContent}
+                  onChange={(e) => onUpdate({
+                    textOverlay: {
+                      ...image.settings.textOverlay,
+                      textContent: e.target.value,
+                    },
+                  })}
+                  className="w-full h-20 bg-slate-900/50 border border-slate-700 rounded-xl p-3 text-sm resize-none outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="スライドに表示するテキスト..."
+                />
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <label className="text-sm font-medium text-slate-300">文字サイズ</label>
+                  <span className="text-xs text-slate-400 font-mono">{image.settings.textOverlay.fontSize}px</span>
+                </div>
+                <input
+                  type="range"
+                  min="14"
+                  max="48"
+                  step="1"
+                  value={image.settings.textOverlay.fontSize}
+                  onChange={(e) => onUpdate({
+                    textOverlay: {
+                      ...image.settings.textOverlay,
+                      fontSize: parseInt(e.target.value),
+                    },
+                  })}
+                  className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300">文字色</label>
+                <div className="flex gap-2">
+                  {['#FFFFFF', '#000000', '#F59E0B', '#EF4444', '#10B981'].map(c => (
+                    <button
+                      key={c}
+                      onClick={() => onUpdate({
+                        textOverlay: {
+                          ...image.settings.textOverlay,
+                          textColor: c,
+                        },
+                      })}
+                      className={`w-7 h-7 rounded-full border-2 transition-all ${
+                        image.settings.textOverlay.textColor === c
+                          ? 'border-indigo-400 scale-110'
+                          : 'border-slate-600'
+                      }`}
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
         {/* Brand Info Preview */}
         <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700">
           <p className="text-[10px] uppercase tracking-widest text-slate-500 mb-2 font-bold">Current Brand</p>

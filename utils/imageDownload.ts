@@ -61,16 +61,24 @@ export async function downloadAllImages(
 }
 
 /**
- * URLから画像の拡張子を取得する
+ * URLから画像の拡張子を取得する（base64 data URLにも対応）
  */
 function getImageExtension(url: string): string | null {
+  // base64 data URL の場合、MIMEタイプから拡張子を判定
+  if (url.startsWith('data:')) {
+    const mimeMatch = url.match(/^data:image\/(png|jpeg|jpg|gif|webp)/i);
+    if (mimeMatch) {
+      return mimeMatch[1].toLowerCase() === 'jpeg' ? 'jpg' : mimeMatch[1].toLowerCase();
+    }
+    return 'png'; // デフォルト
+  }
+
   try {
     const urlObj = new URL(url);
     const pathname = urlObj.pathname;
     const match = pathname.match(/\.(jpg|jpeg|png|gif|webp)$/i);
     return match ? match[1].toLowerCase() : null;
   } catch {
-    // URL解析に失敗した場合は、URL文字列から直接検索
     const match = url.match(/\.(jpg|jpeg|png|gif|webp)/i);
     return match ? match[1].toLowerCase() : null;
   }
