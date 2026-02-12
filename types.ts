@@ -51,3 +51,11 @@ export interface GeneratedImage {
     textOverlay: TextOverlaySettings;
   };
 }
+
+export interface TemplateImage {
+  id: string;
+  name: string;
+  dataUrl: string;
+  thumbnailUrl: string;
+  createdAt: number;
+}

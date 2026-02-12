@@ -1,15 +1,17 @@
 
 import React, { useState, useEffect } from 'react';
-import { StoryGoal, Atmosphere, BrandConfig, GeneratedImage } from './types';
+import { StoryGoal, Atmosphere, BrandConfig, GeneratedImage, TemplateImage } from './types';
 import { GOAL_OPTIONS, ATMOSPHERE_OPTIONS, SAMPLE_SCRIPTS, FONT_MAP, DEFAULT_FONT } from './constants';
 import { generateStoryBackgrounds } from './services/imageGenerationService';
 import { EditPalette } from './components/EditPalette';
 import { InstagramOverlay } from './components/InstagramOverlay';
 import { TextOverlay } from './components/TextOverlay';
 import { GeneratingOverlay } from './components/GeneratingOverlay';
+import { TemplateGallery } from './components/TemplateGallery';
 import { ErrorToast, ToastMessage } from './components/ErrorToast';
 import { downloadImage, downloadAllImages } from './utils/imageDownload';
 import { saveBrandConfig, loadBrandConfig } from './utils/storage';
+import { loadAllTemplates } from './utils/templateStorage';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'brand'>('dashboard');
@@ -30,6 +32,8 @@ const App: React.FC = () => {
   const [progressMessage, setProgressMessage] = useState<string>('');
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [currentSlide, setCurrentSlide] = useState<{ current: number; total: number } | null>(null);
+  const [templates, setTemplates] = useState<TemplateImage[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
   // 開発環境での環境変数確認
   useEffect(() => {
@@ -54,6 +58,13 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // テンプレートの読み込み
+  useEffect(() => {
+    loadAllTemplates()
+      .then(setTemplates)
+      .catch(console.error);
+  }, []);
+
   // ブランド設定の自動保存
   useEffect(() => {
     if (brand.primaryColor !== '#6366f1' || brand.fontPreference !== 'Noto Sans JP Bold' || brand.logoUrl !== '') {
@@ -61,7 +72,54 @@ const App: React.FC = () => {
     }
   }, [brand]);
 
+  const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+
+  const handleGenerateFromTemplate = () => {
+    if (!selectedTemplate) return;
+    if (!scriptInput && !theme) {
+      setToast({
+        id: Date.now().toString(),
+        message: '台本またはテーマを入力してください。',
+        type: 'error',
+      });
+      return;
+    }
+
+    const pages = scriptInput ? scriptInput.split('\n').filter(l => l.trim()) : [theme];
+    const newImages: GeneratedImage[] = pages.map((text, i) => ({
+      id: `tmpl-gen-${Date.now()}-${i}`,
+      url: selectedTemplate.dataUrl,
+      prompt: `素材画像テンプレート: ${selectedTemplate.name}`,
+      slideNumber: i + 1,
+      settings: {
+        blur: 0,
+        brightness: 100,
+        brandOverlay: false,
+        textOverlay: {
+          textContent: text.trim(),
+          layout: 'center_focus' as const,
+          fontSize: 32,
+          textColor: '#ffffff',
+          textVisible: true,
+        },
+      },
+    }));
+
+    setGeneratedImages(prev => [...newImages, ...prev]);
+    setSelectedImageId(newImages[0].id);
+    setToast({
+      id: Date.now().toString(),
+      message: `素材画像から${newImages.length}枚のストーリーを作成しました！`,
+      type: 'success',
+    });
+  };
+
   const handleGenerate = async () => {
+    if (selectedTemplate) {
+      handleGenerateFromTemplate();
+      return;
+    }
+
     if (!scriptInput && !theme) {
       setToast({
         id: Date.now().toString(),
@@ -112,16 +170,16 @@ const App: React.FC = () => {
     } catch (error) {
       console.error('画像生成エラー:', error);
       let errorMessage = '画像生成に失敗しました。';
-      
+
       if (error instanceof Error) {
         errorMessage = error.message;
-        
+
         // ネットワークエラーの場合は具体的な対処法を提示
         if (errorMessage.includes('接続できません') || errorMessage.includes('Failed to fetch')) {
           errorMessage = 'Gemini APIに接続できません。\nネットワーク接続とAPIキーの設定を確認してください。';
         }
       }
-      
+
       setToast({
         id: Date.now().toString(),
         message: errorMessage,
@@ -251,6 +309,15 @@ const App: React.FC = () => {
                   <p className="text-slate-400">文字を載せる余白をAIが自動計算します。</p>
                 </header>
 
+                <div className="bg-slate-800/30 p-6 rounded-3xl border border-slate-700/50 backdrop-blur-sm mb-8">
+                  <TemplateGallery
+                    templates={templates}
+                    selectedTemplateId={selectedTemplateId}
+                    onSelect={setSelectedTemplateId}
+                    onTemplatesChange={setTemplates}
+                  />
+                </div>
+
                 <div className="space-y-6 bg-slate-800/30 p-6 rounded-3xl border border-slate-700/50 backdrop-blur-sm">
                   <div className="space-y-2">
                     <div className="flex justify-between items-center mb-1">
@@ -281,33 +348,35 @@ const App: React.FC = () => {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-semibold text-slate-300">ストーリーの目的</label>
-                      <select
-                        value={goal}
-                        onChange={(e) => setGoal(e.target.value as StoryGoal)}
-                        className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm appearance-none"
-                      >
-                        {GOAL_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
+                  {!selectedTemplate && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-300">ストーリーの目的</label>
+                        <select
+                          value={goal}
+                          onChange={(e) => setGoal(e.target.value as StoryGoal)}
+                          className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm appearance-none"
+                        >
+                          {GOAL_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-300">雰囲気</label>
+                        <select
+                          value={atmosphere}
+                          onChange={(e) => setAtmosphere(e.target.value as Atmosphere)}
+                          className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm appearance-none"
+                        >
+                          {ATMOSPHERE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                        </select>
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-semibold text-slate-300">雰囲気</label>
-                      <select
-                        value={atmosphere}
-                        onChange={(e) => setAtmosphere(e.target.value as Atmosphere)}
-                        className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm appearance-none"
-                      >
-                        {ATMOSPHERE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
-                    </div>
-                  </div>
+                  )}
 
                   <button
                     onClick={handleGenerate}
                     disabled={isGenerating || (!theme && !scriptInput)}
-                    className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:opacity-50 text-white font-bold rounded-2xl transition-all shadow-xl shadow-indigo-600/20 flex items-center justify-center gap-2 group"
+                    className={`w-full py-4 ${selectedTemplate ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-600/20' : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/20'} disabled:bg-slate-700 disabled:opacity-50 text-white font-bold rounded-2xl transition-all shadow-xl flex items-center justify-center gap-2 group`}
                   >
                     {isGenerating ? (
                       <>
@@ -316,6 +385,13 @@ const App: React.FC = () => {
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
                         {currentSlide ? `生成中... (${currentSlide.current}/${currentSlide.total})` : '生成中...'}
+                      </>
+                    ) : selectedTemplate ? (
+                      <>
+                        <svg className="w-5 h-5 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        素材画像でストーリーを作成
                       </>
                     ) : (
                       <>
