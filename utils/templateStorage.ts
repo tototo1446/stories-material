@@ -1,5 +1,5 @@
 import { TemplateImage } from '../types';
-import { supabase } from '../lib/supabase';
+import { getSupabase } from '../lib/supabase';
 
 // ----------------------------------------------------------------
 // サムネイル生成（クライアントサイド）
@@ -92,7 +92,7 @@ export async function saveTemplate(file: File, name: string): Promise<TemplateIm
   );
 
   // 3. DB にメタデータを保存
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('template_images')
     .insert({
       name,
@@ -123,7 +123,7 @@ export async function saveTemplate(file: File, name: string): Promise<TemplateIm
  * 全テンプレートを読み込み
  */
 export async function loadAllTemplates(): Promise<TemplateImage[]> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('template_images')
     .select('*')
     .order('created_at', { ascending: false });
@@ -145,7 +145,7 @@ export async function loadAllTemplates(): Promise<TemplateImage[]> {
  */
 export async function deleteTemplate(id: string): Promise<void> {
   // 1. DB からレコードを取得（URL を取得するため）
-  const { data, error: fetchError } = await supabase
+  const { data, error: fetchError } = await getSupabase()
     .from('template_images')
     .select('image_url, thumbnail_url')
     .eq('id', id)
@@ -160,7 +160,7 @@ export async function deleteTemplate(id: string): Promise<void> {
   }
 
   // 3. DB からレコードを削除
-  const { error: deleteError } = await supabase
+  const { error: deleteError } = await getSupabase()
     .from('template_images')
     .delete()
     .eq('id', id);
