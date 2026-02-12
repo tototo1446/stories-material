@@ -134,7 +134,7 @@ export const TemplateGallery: React.FC<TemplateGalleryProps> = ({
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
-          素材画像を背景として使用します（AI生成をスキップ）
+          この素材画像をベースにAIが3パターン生成します
         </div>
       )}
 

@@ -262,15 +262,16 @@ async function fetchImageAsBase64(imageUrl: string): Promise<{ base64: string; m
   });
 }
 
-const TEMPLATE_IMAGE_SYSTEM_PROMPT = `You are an Instagram Story design expert. You will receive a reference photo and must create a professional Instagram Story image (9:16 vertical format, 1080x1920px).
+const TEMPLATE_IMAGE_SYSTEM_PROMPT = `You are an expert Instagram Story designer. You will receive a reference photo of a person or product. Your job is to create a NEW professional Instagram Story image (9:16 vertical, 1080x1920px).
 
-Rules:
-- Use the provided reference photo as the main visual element
-- Incorporate the user's message text directly INTO the generated image with professional typography
-- The text should be large, bold, and highly readable
-- Create a cohesive design composition that integrates the photo and text
-- Apply the specified atmosphere/style to the overall design
-- Output only the generated image`;
+CRITICAL RULES:
+1. GENERATE A NEW IMAGE of the same person/product — do NOT simply paste or crop the original photo
+2. The person/product should appear in a DIFFERENT POSE, ANGLE, or FRAMING than the reference
+3. Text and the person/product must NEVER overlap — they must occupy separate areas of the image
+4. Place the text in a dedicated zone (top area, bottom area, or side) with a clean background behind it
+5. The text must be large, bold, and immediately readable (high contrast)
+6. The overall composition should look like a professional Instagram Story ad
+7. Output only the generated image`;
 
 async function generateImageFromTemplate(
   templateBase64: string,
@@ -285,19 +286,36 @@ async function generateImageFromTemplate(
     import.meta.env.VITE_GEMINI_IMAGE_MODEL || 'nano-banana-pro-preview';
 
   const styleVariations = [
-    'Clean, minimal design with the photo prominently featured. White or light background with bold black text.',
-    'Dynamic layout with the photo on one side and large bold text on the other. Use contrasting colors for impact.',
-    'Full-bleed photo with text overlaid using a semi-transparent gradient or solid color band for readability.',
+    `LAYOUT: Person/product on the LEFT side (occupying ~40% width). Text on the RIGHT side on a clean solid or gradient background.
+POSE: The person should face toward the text area, as if presenting or gesturing toward it. For products, show from a slightly different angle.
+TEXT STYLE: Large bold black text on a white or light-colored background area. Clean, minimal typography.
+OVERALL: Professional, clean, Instagram Story ad style.`,
+
+    `LAYOUT: Person/product in the BOTTOM HALF of the image. Text in the TOP HALF on a clean background.
+POSE: The person should be looking upward or have an expressive pose (pointing up, arms crossed confidently). For products, show at an angled dynamic view.
+TEXT STYLE: Bold, impactful text with large font size. Use a contrasting color block or banner behind the text.
+OVERALL: Dynamic, eye-catching composition with strong visual hierarchy.`,
+
+    `LAYOUT: Person/product on the RIGHT side. Text on the LEFT side with a semi-transparent or solid color panel.
+POSE: The person should be in a casual, approachable pose (hand on hip, slight lean, natural smile). For products, show in a lifestyle context.
+TEXT STYLE: Modern typography, bold weight, with a subtle drop shadow or background panel for readability.
+OVERALL: Stylish, magazine-quality Instagram Story design.`,
   ];
 
-  const userPrompt = `Create an Instagram Story (9:16 vertical) using this reference photo.
+  const userPrompt = `Study this reference photo carefully. Create a NEW Instagram Story image (9:16 vertical) featuring the SAME person/product but in a COMPLETELY DIFFERENT composition.
 
-Text to display on the image: "${textMessage}"
+Text to render on the image: "${textMessage}"
 
-Design style: ${styleVariations[patternIndex] || styleVariations[0]}
-${atmosphereNote ? `Additional atmosphere notes: ${atmosphereNote}` : ''}
+${styleVariations[patternIndex] || styleVariations[0]}
 
-Generate the complete story image now.`;
+${atmosphereNote ? `Additional style direction: ${atmosphereNote}` : ''}
+
+IMPORTANT REMINDERS:
+- Generate a NEW image with a different pose/angle — do NOT reuse the exact same photo
+- Text and the person/product must be in SEPARATE AREAS — absolutely NO overlapping
+- The text must be clearly readable
+
+Generate the image now.`;
 
   try {
     const response = await ai.models.generateContent({
