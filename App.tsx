@@ -72,51 +72,7 @@ const App: React.FC = () => {
 
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
 
-  const handleGenerateFromTemplate = () => {
-    if (!selectedTemplate) return;
-    if (!message) {
-      setToast({
-        id: Date.now().toString(),
-        message: '描きたいメッセージを入力してください。',
-        type: 'error',
-      });
-      return;
-    }
-
-    const newImage: GeneratedImage = {
-      id: `tmpl-gen-${Date.now()}`,
-      url: selectedTemplate.dataUrl,
-      prompt: `素材画像テンプレート: ${selectedTemplate.name}`,
-      slideNumber: 1,
-      settings: {
-        blur: 0,
-        brightness: 100,
-        brandOverlay: false,
-        textOverlay: {
-          textContent: message.trim(),
-          layout: 'center_focus' as const,
-          fontSize: 32,
-          textColor: '#ffffff',
-          textVisible: true,
-        },
-      },
-    };
-
-    setGeneratedImages(prev => [newImage, ...prev]);
-    setSelectedImageId(newImage.id);
-    setToast({
-      id: Date.now().toString(),
-      message: '素材画像からストーリーを作成しました！',
-      type: 'success',
-    });
-  };
-
   const handleGenerate = async () => {
-    if (selectedTemplate) {
-      handleGenerateFromTemplate();
-      return;
-    }
-
     if (!message) {
       setToast({
         id: Date.now().toString(),
@@ -143,7 +99,8 @@ const App: React.FC = () => {
           onSlideGenerated: (current, total) => {
             setCurrentSlide({ current, total });
           },
-        }
+        },
+        selectedTemplate?.dataUrl
       );
 
       if (newImages.length === 0) {
@@ -331,20 +288,18 @@ const App: React.FC = () => {
                     />
                   </div>
 
-                  {!selectedTemplate && (
-                    <div className="space-y-2">
-                      <label className="text-sm font-semibold text-slate-300">
-                        雰囲気の注釈 <span className="text-slate-500">(任意)</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={atmosphereNote}
-                        onChange={(e) => setAtmosphereNote(e.target.value)}
-                        placeholder="例：文字を強調して、背景白、ポップな雰囲気..."
-                        className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
-                      />
-                    </div>
-                  )}
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-300">
+                      雰囲気の注釈 <span className="text-slate-500">(任意)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={atmosphereNote}
+                      onChange={(e) => setAtmosphereNote(e.target.value)}
+                      placeholder="例：文字を強調して、背景白、ポップな雰囲気..."
+                      className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
+                    />
+                  </div>
 
                   <button
                     onClick={handleGenerate}
@@ -364,7 +319,7 @@ const App: React.FC = () => {
                         <svg className="w-5 h-5 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
-                        素材画像でストーリーを作成
+                        素材画像で3パターン生成
                       </>
                     ) : (
                       <>

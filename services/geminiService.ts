@@ -234,13 +234,131 @@ async function generateImageWithImagen(prompt: string): Promise<string> {
   );
 }
 
+// --- テンプレート画像付き生成 ---
+
+async function fetchImageAsBase64(imageUrl: string): Promise<{ base64: string; mimeType: string }> {
+  // data URL の場合はそのまま分解
+  if (imageUrl.startsWith('data:')) {
+    const match = imageUrl.match(/^data:(image\/[^;]+);base64,(.+)$/);
+    if (match) {
+      return { mimeType: match[1], base64: match[2] };
+    }
+  }
+
+  // 外部 URL の場合は fetch して変換
+  const response = await fetch(imageUrl);
+  const blob = await response.blob();
+  const mimeType = blob.type || 'image/jpeg';
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const base64 = result.split(',')[1];
+      resolve({ base64, mimeType });
+    };
+    reader.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+const TEMPLATE_IMAGE_SYSTEM_PROMPT = `You are an Instagram Story design expert. You will receive a reference photo and must create a professional Instagram Story image (9:16 vertical format, 1080x1920px).
+
+Rules:
+- Use the provided reference photo as the main visual element
+- Incorporate the user's message text directly INTO the generated image with professional typography
+- The text should be large, bold, and highly readable
+- Create a cohesive design composition that integrates the photo and text
+- Apply the specified atmosphere/style to the overall design
+- Output only the generated image`;
+
+async function generateImageFromTemplate(
+  templateBase64: string,
+  templateMimeType: string,
+  textMessage: string,
+  atmosphereNote: string,
+  patternIndex: number
+): Promise<string> {
+  const ai = getGeminiClient();
+
+  const imageModel =
+    import.meta.env.VITE_GEMINI_IMAGE_MODEL || 'nano-banana-pro-preview';
+
+  const styleVariations = [
+    'Clean, minimal design with the photo prominently featured. White or light background with bold black text.',
+    'Dynamic layout with the photo on one side and large bold text on the other. Use contrasting colors for impact.',
+    'Full-bleed photo with text overlaid using a semi-transparent gradient or solid color band for readability.',
+  ];
+
+  const userPrompt = `Create an Instagram Story (9:16 vertical) using this reference photo.
+
+Text to display on the image: "${textMessage}"
+
+Design style: ${styleVariations[patternIndex] || styleVariations[0]}
+${atmosphereNote ? `Additional atmosphere notes: ${atmosphereNote}` : ''}
+
+Generate the complete story image now.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: imageModel,
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType: templateMimeType,
+                data: templateBase64,
+              },
+            },
+            { text: userPrompt },
+          ],
+        },
+      ],
+      config: {
+        systemInstruction: TEMPLATE_IMAGE_SYSTEM_PROMPT,
+        responseModalities: ['IMAGE', 'TEXT'],
+      },
+    });
+
+    const parts = response.candidates?.[0]?.content?.parts;
+    if (parts) {
+      for (const part of parts) {
+        if (part.inlineData) {
+          const mimeType = part.inlineData.mimeType || 'image/png';
+          const base64Data = part.inlineData.data;
+          return `data:${mimeType};base64,${base64Data}`;
+        }
+      }
+    }
+
+    throw new GeminiServiceError('レスポンスに画像データが含まれていません。');
+  } catch (error) {
+    if (
+      error instanceof GeminiServiceError ||
+      (error instanceof Error &&
+        (error.message.includes('not supported') ||
+          error.message.includes('not found') ||
+          error.message.includes('INVALID_ARGUMENT')))
+    ) {
+      console.warn('テンプレート画像生成失敗、テキスト付き背景生成にフォールバック');
+      // フォールバック: テンプレートなしで背景生成
+      const fallbackPrompt = `9:16 vertical Instagram story background, professional design with space for text overlay about "${textMessage}", ${atmosphereNote || 'modern clean style'}, no text, no letters, no words`;
+      return generateImageWithImagen(fallbackPrompt);
+    }
+    throw error;
+  }
+}
+
 // --- Orchestrator: メッセージ + 雰囲気 → 3パターン生成 ---
 
 export const generateStoryBackgrounds = async (
   message: string,
   atmosphereNote: string,
   brandColor: string,
-  callbacks?: WorkflowProgressCallback
+  callbacks?: WorkflowProgressCallback,
+  templateImageUrl?: string
 ): Promise<GeneratedImage[]> => {
   if (!message) {
     throw new Error('描きたいメッセージを入力してください。');
@@ -249,7 +367,73 @@ export const generateStoryBackgrounds = async (
   const TOTAL_PATTERNS = 3;
 
   try {
-    // Step 1: 3パターンのプロンプト生成
+    // テンプレート画像がある場合: マルチモーダル生成
+    if (templateImageUrl) {
+      callbacks?.onProgress?.('素材画像を読み込み中...');
+      const { base64, mimeType } = await fetchImageAsBase64(templateImageUrl);
+
+      const generatedImages: GeneratedImage[] = [];
+
+      for (let i = 0; i < TOTAL_PATTERNS; i++) {
+        callbacks?.onSlideGenerated?.(i, TOTAL_PATTERNS);
+        callbacks?.onProgress?.(
+          `パターン ${i + 1}/${TOTAL_PATTERNS} を生成中...`
+        );
+
+        try {
+          console.log(`テンプレート パターン ${i + 1} 生成`);
+          const imageDataUrl = await generateImageFromTemplate(
+            base64,
+            mimeType,
+            message,
+            atmosphereNote,
+            i
+          );
+
+          generatedImages.push({
+            id: `tmpl-pattern-${i + 1}-${Date.now()}`,
+            url: imageDataUrl,
+            prompt: `素材画像 + "${message}" パターン${i + 1}`,
+            slideNumber: i + 1,
+            resolution: '1080x1920',
+            settings: {
+              blur: 0,
+              brightness: 100,
+              brandOverlay: false,
+              textOverlay: {
+                textContent: '',
+                layout: 'center_focus' as LayoutType,
+                fontSize: 24,
+                textColor: '#FFFFFF',
+                textVisible: false,
+              },
+            },
+          });
+
+          callbacks?.onSlideGenerated?.(i + 1, TOTAL_PATTERNS);
+          console.log(`テンプレート パターン ${i + 1} 生成完了`);
+        } catch (err) {
+          console.error(`テンプレート パターン ${i + 1} 失敗:`, err);
+          callbacks?.onProgress?.(
+            `パターン ${i + 1} の生成に失敗しました。次のパターンに進みます...`
+          );
+        }
+      }
+
+      if (generatedImages.length === 0) {
+        throw new GeminiServiceError(
+          'すべての画像生成に失敗しました。APIキーの設定やモデルの利用可能性を確認してください。'
+        );
+      }
+
+      callbacks?.onSlideGenerated?.(generatedImages.length, TOTAL_PATTERNS);
+      callbacks?.onProgress?.(
+        `${generatedImages.length}パターンを生成しました！`
+      );
+      return generatedImages;
+    }
+
+    // テンプレートなし: プロンプト生成 → 背景画像生成
     callbacks?.onProgress?.('背景デザインを3パターン考案中...');
     console.log('Step 1: 3パターンのプロンプト生成を開始');
 
@@ -265,7 +449,6 @@ export const generateStoryBackgrounds = async (
       throw new GeminiServiceError('プロンプトの生成結果が空です。');
     }
 
-    // Step 2: 各パターンの画像を生成
     const generatedImages: GeneratedImage[] = [];
 
     for (let i = 0; i < Math.min(variations.length, TOTAL_PATTERNS); i++) {
