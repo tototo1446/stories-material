@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { StoryGoal, Atmosphere, BrandConfig, GeneratedImage, TemplateImage } from './types';
-import { GOAL_OPTIONS, ATMOSPHERE_OPTIONS, SAMPLE_SCRIPTS, FONT_MAP, DEFAULT_FONT } from './constants';
+import { BrandConfig, GeneratedImage, TemplateImage } from './types';
+import { SAMPLE_SCRIPTS, FONT_MAP, DEFAULT_FONT } from './constants';
 import { generateStoryBackgrounds } from './services/imageGenerationService';
 import { EditPalette } from './components/EditPalette';
 import { InstagramOverlay } from './components/InstagramOverlay';
@@ -15,10 +15,8 @@ import { loadAllTemplates } from './utils/templateStorage';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'brand'>('dashboard');
-  const [scriptInput, setScriptInput] = useState('');
-  const [theme, setTheme] = useState('');
-  const [goal, setGoal] = useState<StoryGoal>(StoryGoal.EMPATHY);
-  const [atmosphere, setAtmosphere] = useState<Atmosphere>(Atmosphere.MINIMAL);
+  const [message, setMessage] = useState('');
+  const [atmosphereNote, setAtmosphereNote] = useState('');
   const [brand, setBrand] = useState<BrandConfig>({
     logoUrl: '',
     primaryColor: '#6366f1',
@@ -76,40 +74,39 @@ const App: React.FC = () => {
 
   const handleGenerateFromTemplate = () => {
     if (!selectedTemplate) return;
-    if (!scriptInput && !theme) {
+    if (!message) {
       setToast({
         id: Date.now().toString(),
-        message: '台本またはテーマを入力してください。',
+        message: '描きたいメッセージを入力してください。',
         type: 'error',
       });
       return;
     }
 
-    const pages = scriptInput ? scriptInput.split('\n').filter(l => l.trim()) : [theme];
-    const newImages: GeneratedImage[] = pages.map((text, i) => ({
-      id: `tmpl-gen-${Date.now()}-${i}`,
+    const newImage: GeneratedImage = {
+      id: `tmpl-gen-${Date.now()}`,
       url: selectedTemplate.dataUrl,
       prompt: `素材画像テンプレート: ${selectedTemplate.name}`,
-      slideNumber: i + 1,
+      slideNumber: 1,
       settings: {
         blur: 0,
         brightness: 100,
         brandOverlay: false,
         textOverlay: {
-          textContent: text.trim(),
+          textContent: message.trim(),
           layout: 'center_focus' as const,
           fontSize: 32,
           textColor: '#ffffff',
           textVisible: true,
         },
       },
-    }));
+    };
 
-    setGeneratedImages(prev => [...newImages, ...prev]);
-    setSelectedImageId(newImages[0].id);
+    setGeneratedImages(prev => [newImage, ...prev]);
+    setSelectedImageId(newImage.id);
     setToast({
       id: Date.now().toString(),
-      message: `素材画像から${newImages.length}枚のストーリーを作成しました！`,
+      message: '素材画像からストーリーを作成しました！',
       type: 'success',
     });
   };
@@ -120,10 +117,10 @@ const App: React.FC = () => {
       return;
     }
 
-    if (!scriptInput && !theme) {
+    if (!message) {
       setToast({
         id: Date.now().toString(),
-        message: '台本またはテーマを入力してください。',
+        message: '描きたいメッセージを入力してください。',
         type: 'error',
       });
       return;
@@ -136,15 +133,12 @@ const App: React.FC = () => {
 
     try {
       const newImages = await generateStoryBackgrounds(
-        scriptInput,
-        theme,
-        goal,
-        atmosphere,
+        message,
+        atmosphereNote,
         brand.primaryColor,
-        undefined,
         {
-          onProgress: (message) => {
-            setProgressMessage(message);
+          onProgress: (msg) => {
+            setProgressMessage(msg);
           },
           onSlideGenerated: (current, total) => {
             setCurrentSlide({ current, total });
@@ -249,11 +243,9 @@ const App: React.FC = () => {
 
   const selectedImage = generatedImages.find(img => img.id === selectedImageId);
 
-  const handleLoadScript = (script: (typeof SAMPLE_SCRIPTS)[0]) => {
-    setScriptInput(script.pages.join('\n'));
-    setTheme(script.title);
-    setGoal(script.goal);
-    setAtmosphere(script.atmosphere);
+  const handleLoadSample = (sample: (typeof SAMPLE_SCRIPTS)[0]) => {
+    setMessage(sample.message);
+    setAtmosphereNote(sample.atmosphereNote);
   };
 
   return (
@@ -305,8 +297,8 @@ const App: React.FC = () => {
               {/* Controls Column */}
               <div className="lg:col-span-4 space-y-8">
                 <header>
-                  <h2 className="text-3xl font-bold text-white mb-2">背景素材を生成</h2>
-                  <p className="text-slate-400">文字を載せる余白をAIが自動計算します。</p>
+                  <h2 className="text-3xl font-bold text-white mb-2">ストーリー作成</h2>
+                  <p className="text-slate-400">メッセージを入力して、背景画像を3パターン生成します。</p>
                 </header>
 
                 <div className="bg-slate-800/30 p-6 rounded-3xl border border-slate-700/50 backdrop-blur-sm mb-8">
@@ -321,61 +313,42 @@ const App: React.FC = () => {
                 <div className="space-y-6 bg-slate-800/30 p-6 rounded-3xl border border-slate-700/50 backdrop-blur-sm">
                   <div className="space-y-2">
                     <div className="flex justify-between items-center mb-1">
-                      <label className="text-sm font-semibold text-slate-300">台本を入力</label>
-                      <button 
-                        onClick={() => handleLoadScript(SAMPLE_SCRIPTS[0])}
+                      <label className="text-sm font-semibold text-slate-300">
+                        描きたいメッセージ <span className="text-pink-400">(必須)</span>
+                      </label>
+                      <button
+                        onClick={() => handleLoadSample(SAMPLE_SCRIPTS[0])}
                         className="text-[10px] bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded-md text-slate-300 transition-colors"
                       >
                         サンプル読込
                       </button>
                     </div>
                     <textarea
-                      value={scriptInput}
-                      onChange={(e) => setScriptInput(e.target.value)}
-                      placeholder="ストーリーズの各ページの内容を1行ずつ入力..."
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
+                      placeholder={"年内ラストAI講座\n締切まで後3日！"}
                       className="w-full h-32 bg-slate-900/50 border border-slate-700 rounded-2xl p-4 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm resize-none"
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-300">テーマ・キーワード</label>
-                    <input
-                      type="text"
-                      value={theme}
-                      onChange={(e) => setTheme(e.target.value)}
-                      placeholder="例：モダンなオフィス, 朝のカフェ, 抽象的な波..."
-                      className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
-                    />
-                  </div>
-
                   {!selectedTemplate && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-sm font-semibold text-slate-300">ストーリーの目的</label>
-                        <select
-                          value={goal}
-                          onChange={(e) => setGoal(e.target.value as StoryGoal)}
-                          className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm appearance-none"
-                        >
-                          {GOAL_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                        </select>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-semibold text-slate-300">雰囲気</label>
-                        <select
-                          value={atmosphere}
-                          onChange={(e) => setAtmosphere(e.target.value as Atmosphere)}
-                          className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm appearance-none"
-                        >
-                          {ATMOSPHERE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                        </select>
-                      </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-semibold text-slate-300">
+                        雰囲気の注釈 <span className="text-slate-500">(任意)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={atmosphereNote}
+                        onChange={(e) => setAtmosphereNote(e.target.value)}
+                        placeholder="例：文字を強調して、背景白、ポップな雰囲気..."
+                        className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
+                      />
                     </div>
                   )}
 
                   <button
                     onClick={handleGenerate}
-                    disabled={isGenerating || (!theme && !scriptInput)}
+                    disabled={isGenerating || !message}
                     className={`w-full py-4 ${selectedTemplate ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-600/20' : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/20'} disabled:bg-slate-700 disabled:opacity-50 text-white font-bold rounded-2xl transition-all shadow-xl flex items-center justify-center gap-2 group`}
                   >
                     {isGenerating ? (
@@ -398,7 +371,7 @@ const App: React.FC = () => {
                         <svg className="w-5 h-5 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                         </svg>
-                        「文字入れ専用」背景を生成
+                        背景を3パターン生成
                       </>
                     )}
                   </button>
@@ -515,7 +488,7 @@ const App: React.FC = () => {
                         </svg>
                       </div>
                       <h4 className="text-xl font-bold text-white mb-2">生成を始めましょう</h4>
-                      <p className="text-slate-400">台本を入力して、ブランドに合わせた最適な「文字入れ専用」背景を作成します。</p>
+                      <p className="text-slate-400">メッセージを入力して、最適な背景画像を3パターン生成します。</p>
                     </div>
                   </div>
                 )}

@@ -1,21 +1,4 @@
 
-export enum StoryGoal {
-  EMPATHY = '共感',
-  EDUCATION = '教育',
-  SALES = '販売促進',
-  BRAND_AWARENESS = 'ブランド認知',
-  ENGAGEMENT = 'エンゲージメント'
-}
-
-export enum Atmosphere {
-  MINIMAL = 'ミニマル・シンプル',
-  NATURAL = 'ナチュラル・オーガニック',
-  MODERN = 'モダン・洗練',
-  POP = 'ポップ・カラフル',
-  ELEGANT = '高級感・エレガント',
-  CASUAL = 'カジュアル・親しみやすい'
-}
-
 export interface BrandConfig {
   logoUrl: string;
   primaryColor: string;
