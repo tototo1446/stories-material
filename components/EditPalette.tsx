@@ -30,6 +30,52 @@ export const EditPalette: React.FC<EditPaletteProps> = ({ image, onUpdate, brand
           </button>
         </div>
 
+        {/* Logo Overlay Toggle */}
+        {brand.logoUrl && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="text-sm font-medium text-slate-300">ロゴ画像挿入</label>
+                <p className="text-[10px] text-slate-500">画像上にロゴを配置</p>
+              </div>
+              <button
+                onClick={() => onUpdate({
+                  logoOverlay: {
+                    ...(image.settings.logoOverlay || { visible: false, x: 50, y: 10, scale: 0.3 }),
+                    visible: !(image.settings.logoOverlay?.visible),
+                  },
+                })}
+                className={`w-12 h-6 rounded-full transition-colors relative ${image.settings.logoOverlay?.visible ? 'bg-indigo-600' : 'bg-slate-600'}`}
+              >
+                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${image.settings.logoOverlay?.visible ? 'translate-x-7' : 'translate-x-1'}`} />
+              </button>
+            </div>
+
+            {image.settings.logoOverlay?.visible && (
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <label className="text-sm font-medium text-slate-300">ロゴサイズ</label>
+                  <span className="text-xs text-slate-400 font-mono">{Math.round((image.settings.logoOverlay?.scale || 0.3) * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="10"
+                  max="200"
+                  step="5"
+                  value={Math.round((image.settings.logoOverlay?.scale || 0.3) * 100)}
+                  onChange={(e) => onUpdate({
+                    logoOverlay: {
+                      ...(image.settings.logoOverlay || { visible: true, x: 50, y: 10, scale: 0.3 }),
+                      scale: parseInt(e.target.value) / 100,
+                    },
+                  })}
+                  className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                />
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Blur Slider */}
         <div className="space-y-3">
           <div className="flex justify-between">

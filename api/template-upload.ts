@@ -15,7 +15,8 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const blob = await put(`templates/${filename}`, req, {
+    const folder = (req.query.folder as string) || 'templates';
+    const blob = await put(`${folder}/${filename}`, req, {
       access: 'public',
     });
 

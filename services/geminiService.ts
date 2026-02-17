@@ -68,9 +68,14 @@ Instagramストーリーズ（9:16、1080x1920px）用の背景画像を生成�
 async function generatePromptVariations(
   userMessage: string,
   atmosphereNote: string,
-  brandColor: string
+  brandColor: string,
+  logoPalette?: string[]
 ): Promise<PromptVariation[]> {
   const ai = getGeminiClient();
+
+  const paletteSection = logoPalette && logoPalette.length > 0
+    ? `\n## ブランドカラーパレット（ロゴから抽出）\n${logoPalette.join(', ')}\nこれらの色をデザインのアクセントやグラデーションに積極的に活用してください。ブランドの世界観を反映した配色にしてください。`
+    : '';
 
   const userPrompt = `## ユーザーのメッセージ（画像上に重ねるテキスト）
 ${userMessage}
@@ -79,7 +84,7 @@ ${userMessage}
 ${atmosphereNote || '指定なし（バランスの良いデザイン）'}
 
 ## ブランドカラー
-${brandColor}
+${brandColor}${paletteSection}
 
 上記の情報から、背景画像生成用の英語プロンプトを3パターン作成してください。
 メッセージの内容に合った雰囲気の背景を設計してください。`;
@@ -278,7 +283,8 @@ async function generateImageFromTemplate(
   templateMimeType: string,
   textMessage: string,
   atmosphereNote: string,
-  patternIndex: number
+  patternIndex: number,
+  logoPalette?: string[]
 ): Promise<string> {
   const ai = getGeminiClient();
 
@@ -309,6 +315,7 @@ Text to render on the image: "${textMessage}"
 ${styleVariations[patternIndex] || styleVariations[0]}
 
 ${atmosphereNote ? `Additional style direction: ${atmosphereNote}` : ''}
+${logoPalette && logoPalette.length > 0 ? `Brand color palette: ${logoPalette.join(', ')}. Incorporate these colors into the design as accents, backgrounds, or gradient elements.` : ''}
 
 IMPORTANT REMINDERS:
 - Generate a NEW image with a different pose/angle — do NOT reuse the exact same photo
@@ -376,7 +383,8 @@ export const generateStoryBackgrounds = async (
   atmosphereNote: string,
   brandColor: string,
   callbacks?: WorkflowProgressCallback,
-  templateImageUrl?: string
+  templateImageUrl?: string,
+  logoPalette?: string[]
 ): Promise<GeneratedImage[]> => {
   if (!message) {
     throw new Error('描きたいメッセージを入力してください。');
@@ -405,7 +413,8 @@ export const generateStoryBackgrounds = async (
             mimeType,
             message,
             atmosphereNote,
-            i
+            i,
+            logoPalette
           );
 
           generatedImages.push({
@@ -424,6 +433,12 @@ export const generateStoryBackgrounds = async (
                 fontSize: 24,
                 textColor: '#FFFFFF',
                 textVisible: false,
+              },
+              logoOverlay: {
+                visible: false,
+                x: 50,
+                y: 10,
+                scale: 0.3,
               },
             },
           });
@@ -458,7 +473,8 @@ export const generateStoryBackgrounds = async (
     const variations = await generatePromptVariations(
       message,
       atmosphereNote,
-      brandColor
+      brandColor,
+      logoPalette
     );
 
     console.log('プロンプト生成結果:', JSON.stringify(variations, null, 2));
@@ -500,6 +516,12 @@ export const generateStoryBackgrounds = async (
               fontSize: 24,
               textColor: '#FFFFFF',
               textVisible: true,
+            },
+            logoOverlay: {
+              visible: false,
+              x: 50,
+              y: 10,
+              scale: 0.3,
             },
           },
         });

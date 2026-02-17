@@ -1,29 +1,35 @@
 
-import React, { useState, useEffect } from 'react';
-import { BrandConfig, GeneratedImage, TemplateImage } from './types';
+import React, { useState, useEffect, useRef } from 'react';
+import { BrandConfig, GeneratedImage, SavedImage, TemplateImage } from './types';
 import { SAMPLE_SCRIPTS, FONT_MAP, DEFAULT_FONT } from './constants';
 import { generateStoryBackgrounds } from './services/imageGenerationService';
 import { EditPalette } from './components/EditPalette';
 import { InstagramOverlay } from './components/InstagramOverlay';
 import { TextOverlay } from './components/TextOverlay';
+import { LogoOverlay } from './components/LogoOverlay';
 import { GeneratingOverlay } from './components/GeneratingOverlay';
 import { TemplateGallery } from './components/TemplateGallery';
+import { SavedGallery } from './components/SavedGallery';
 import { ErrorToast, ToastMessage } from './components/ErrorToast';
-import { downloadImage, downloadAllImages } from './utils/imageDownload';
+import { downloadImage, downloadAllImages, flattenImageForDownload } from './utils/imageDownload';
 import { saveBrandConfig, loadBrandConfig } from './utils/storage';
 import { loadAllTemplates } from './utils/templateStorage';
+import { extractColorsFromImage } from './utils/colorExtraction';
+import { saveGeneratedImage, loadSavedImages } from './utils/generatedImageStorage';
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'brand'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'brand' | 'gallery'>('dashboard');
   const [message, setMessage] = useState('');
   const [atmosphereNote, setAtmosphereNote] = useState('');
   const [brand, setBrand] = useState<BrandConfig>({
     logoUrl: '',
     primaryColor: '#6366f1',
-    fontPreference: 'Noto Sans JP Bold'
+    fontPreference: 'Noto Sans JP Bold',
+    useLogoColors: false,
   });
-  
+
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
+  const [savedImages, setSavedImages] = useState<SavedImage[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [showOverlay, setShowOverlay] = useState(true);
@@ -32,6 +38,8 @@ const App: React.FC = () => {
   const [currentSlide, setCurrentSlide] = useState<{ current: number; total: number } | null>(null);
   const [templates, setTemplates] = useState<TemplateImage[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+
+  const previewContainerRef = useRef<HTMLDivElement>(null);
 
   // 開発環境での環境変数確認
   useEffect(() => {
@@ -63,22 +71,29 @@ const App: React.FC = () => {
       .catch(console.error);
   }, []);
 
+  // 保存済み画像の読み込み
+  useEffect(() => {
+    loadSavedImages()
+      .then(setSavedImages)
+      .catch(console.error);
+  }, []);
+
   // ブランド設定の自動保存
   useEffect(() => {
-    if (brand.primaryColor !== '#6366f1' || brand.fontPreference !== 'Noto Sans JP Bold' || brand.logoUrl !== '') {
+    if (brand.primaryColor !== '#6366f1' || brand.fontPreference !== 'Noto Sans JP Bold' || brand.logoUrl !== '' || brand.useLogoColors) {
       saveBrandConfig(brand);
     }
   }, [brand]);
 
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
 
+  const showToast = (message: string, type: 'success' | 'error' | 'info', duration?: number) => {
+    setToast({ id: Date.now().toString(), message, type, duration });
+  };
+
   const handleGenerate = async () => {
     if (!message) {
-      setToast({
-        id: Date.now().toString(),
-        message: '描きたいメッセージを入力してください。',
-        type: 'error',
-      });
+      showToast('描きたいメッセージを入力してください。', 'error');
       return;
     }
 
@@ -88,6 +103,10 @@ const App: React.FC = () => {
     setToast(null);
 
     try {
+      const logoPalette = brand.useLogoColors && brand.extractedColors
+        ? brand.extractedColors.palette
+        : undefined;
+
       const newImages = await generateStoryBackgrounds(
         message,
         atmosphereNote,
@@ -100,23 +119,27 @@ const App: React.FC = () => {
             setCurrentSlide({ current, total });
           },
         },
-        selectedTemplate?.dataUrl
+        selectedTemplate?.dataUrl,
+        logoPalette
       );
 
       if (newImages.length === 0) {
-        setToast({
-          id: Date.now().toString(),
-          message: '画像が生成されませんでした。もう一度お試しください。',
-          type: 'error',
-        });
+        showToast('画像が生成されませんでした。もう一度お試しください。', 'error');
       } else {
         setGeneratedImages(prev => [...newImages, ...prev]);
         setSelectedImageId(newImages[0].id);
-        setToast({
-          id: Date.now().toString(),
-          message: `${newImages.length}枚の背景画像を生成しました！`,
-          type: 'success',
-        });
+        showToast(`${newImages.length}枚の背景画像を生成しました！`, 'success');
+
+        // サーバーに自動保存
+        setProgressMessage('画像をサーバーに保存中...');
+        for (const img of newImages) {
+          try {
+            const saved = await saveGeneratedImage(img, { originalMessage: message });
+            setSavedImages(prev => [saved, ...prev]);
+          } catch (err) {
+            console.error('画像の保存に失敗:', err);
+          }
+        }
       }
     } catch (error) {
       console.error('画像生成エラー:', error);
@@ -125,18 +148,12 @@ const App: React.FC = () => {
       if (error instanceof Error) {
         errorMessage = error.message;
 
-        // ネットワークエラーの場合は具体的な対処法を提示
         if (errorMessage.includes('接続できません') || errorMessage.includes('Failed to fetch')) {
           errorMessage = 'Gemini APIに接続できません。\nネットワーク接続とAPIキーの設定を確認してください。';
         }
       }
 
-      setToast({
-        id: Date.now().toString(),
-        message: errorMessage,
-        type: 'error',
-        duration: 10000,
-      });
+      showToast(errorMessage, 'error', 10000);
     } finally {
       setIsGenerating(false);
       setProgressMessage('');
@@ -146,24 +163,24 @@ const App: React.FC = () => {
 
   const handleDownloadImage = async (image: GeneratedImage) => {
     try {
+      const hasOverlays = image.settings.logoOverlay?.visible ||
+        image.settings.textOverlay?.textVisible ||
+        image.settings.brandOverlay ||
+        image.settings.blur > 0 ||
+        image.settings.brightness !== 100;
+
+      let downloadUrl = image.url;
+      if (hasOverlays) {
+        downloadUrl = await flattenImageForDownload(image, brand, FONT_MAP, DEFAULT_FONT);
+      }
+
       const slideNum = image.slideNumber || 1;
-      const mimeMatch = image.url.match(/^data:image\/(png|jpeg|jpg|gif|webp)/i);
-      const urlMatch = image.url.match(/\.(jpg|jpeg|png|gif|webp)/i);
-      const extension = mimeMatch ? (mimeMatch[1] === 'jpeg' ? 'jpg' : mimeMatch[1]) : urlMatch?.[1] || 'png';
-      const filename = `story-background-slide-${slideNum}.${extension}`;
-      await downloadImage(image.url, filename);
-      setToast({
-        id: Date.now().toString(),
-        message: '画像をダウンロードしました。',
-        type: 'success',
-      });
+      const filename = `story-background-slide-${slideNum}.png`;
+      await downloadImage(downloadUrl, filename);
+      showToast('画像をダウンロードしました。', 'success');
     } catch (error) {
       console.error('ダウンロードエラー:', error);
-      setToast({
-        id: Date.now().toString(),
-        message: '画像のダウンロードに失敗しました。',
-        type: 'error',
-      });
+      showToast('画像のダウンロードに失敗しました。', 'error');
     }
   };
 
@@ -171,29 +188,17 @@ const App: React.FC = () => {
     if (generatedImages.length === 0) return;
 
     try {
-      setToast({
-        id: Date.now().toString(),
-        message: 'すべての画像をダウンロードしています...',
-        type: 'info',
-      });
+      showToast('すべての画像をダウンロードしています...', 'info');
       await downloadAllImages(generatedImages);
-      setToast({
-        id: Date.now().toString(),
-        message: `${generatedImages.length}枚の画像をダウンロードしました。`,
-        type: 'success',
-      });
+      showToast(`${generatedImages.length}枚の画像をダウンロードしました。`, 'success');
     } catch (error) {
       console.error('一括ダウンロードエラー:', error);
-      setToast({
-        id: Date.now().toString(),
-        message: '一部の画像のダウンロードに失敗しました。',
-        type: 'error',
-      });
+      showToast('一部の画像のダウンロードに失敗しました。', 'error');
     }
   };
 
   const updateImageSettings = (id: string, updates: Partial<GeneratedImage['settings']>) => {
-    setGeneratedImages(prev => prev.map(img => 
+    setGeneratedImages(prev => prev.map(img =>
       img.id === id ? { ...img, settings: { ...img.settings, ...updates } } : img
     ));
   };
@@ -203,6 +208,28 @@ const App: React.FC = () => {
   const handleLoadSample = (sample: (typeof SAMPLE_SCRIPTS)[0]) => {
     setMessage(sample.message);
     setAtmosphereNote(sample.atmosphereNote);
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const logoUrl = reader.result as string;
+      try {
+        const extractedColors = await extractColorsFromImage(logoUrl);
+        setBrand(prev => ({
+          ...prev,
+          logoUrl,
+          extractedColors,
+          primaryColor: extractedColors.dominant,
+        }));
+        showToast('ロゴからカラーパレットを抽出しました。', 'success');
+      } catch {
+        setBrand(prev => ({ ...prev, logoUrl }));
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -234,6 +261,13 @@ const App: React.FC = () => {
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg>
             <span className="hidden lg:block font-medium">ブランドプリセット</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('gallery')}
+            className={`flex items-center gap-3 p-3 rounded-xl transition-all ${activeTab === 'gallery' ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-600/20' : 'text-slate-400 hover:bg-slate-800'}`}
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+            <span className="hidden lg:block font-medium">保存済み画像</span>
           </button>
         </nav>
 
@@ -301,6 +335,34 @@ const App: React.FC = () => {
                     />
                   </div>
 
+                  {/* ロゴカラー採用トグル */}
+                  {brand.logoUrl && brand.extractedColors && (
+                    <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-700 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <label className="text-sm font-medium text-slate-300">ロゴカラー採用</label>
+                          <p className="text-[10px] text-slate-500">生成画像にロゴの色味を反映</p>
+                        </div>
+                        <button
+                          onClick={() => setBrand(prev => ({ ...prev, useLogoColors: !prev.useLogoColors }))}
+                          className={`w-12 h-6 rounded-full transition-colors relative ${brand.useLogoColors ? 'bg-indigo-600' : 'bg-slate-600'}`}
+                        >
+                          <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${brand.useLogoColors ? 'translate-x-7' : 'translate-x-1'}`} />
+                        </button>
+                      </div>
+                      <div className="flex gap-2">
+                        {brand.extractedColors.palette.map((color, i) => (
+                          <div
+                            key={i}
+                            className="w-6 h-6 rounded-lg border border-slate-600"
+                            style={{ backgroundColor: color }}
+                            title={color}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <button
                     onClick={handleGenerate}
                     disabled={isGenerating || !message}
@@ -333,8 +395,8 @@ const App: React.FC = () => {
                 </div>
 
                 {selectedImage && (
-                  <EditPalette 
-                    image={selectedImage} 
+                  <EditPalette
+                    image={selectedImage}
                     onUpdate={(updates) => updateImageSettings(selectedImage.id, updates)}
                     brand={brand}
                   />
@@ -349,7 +411,7 @@ const App: React.FC = () => {
                     プレビュー & 調整
                   </h3>
                   <div className="flex items-center gap-4">
-                    <button 
+                    <button
                       onClick={() => setShowOverlay(!showOverlay)}
                       className={`px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${showOverlay ? 'bg-slate-700 text-indigo-400' : 'bg-slate-800 text-slate-400'}`}
                     >
@@ -363,7 +425,7 @@ const App: React.FC = () => {
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
                     {/* Active Preview */}
                     <div className="relative group">
-                      <div className="instagram-aspect rounded-[40px] overflow-hidden bg-slate-900 border-4 border-slate-800 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] relative">
+                      <div ref={previewContainerRef} className="instagram-aspect rounded-[40px] overflow-hidden bg-slate-900 border-4 border-slate-800 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] relative">
                         {/* Layer 1: Filtered background */}
                         <div
                           className="absolute inset-0"
@@ -394,10 +456,23 @@ const App: React.FC = () => {
                           />
                         )}
 
+                        {/* Layer 2.5: Logo overlay (draggable) */}
+                        {selectedImage?.settings.logoOverlay?.visible && brand.logoUrl && (
+                          <LogoOverlay
+                            logoUrl={brand.logoUrl}
+                            settings={selectedImage.settings.logoOverlay}
+                            onSettingsChange={(updates) => updateImageSettings(selectedImage.id, {
+                              logoOverlay: { ...selectedImage.settings.logoOverlay, ...updates },
+                            })}
+                            containerRef={previewContainerRef}
+                            interactive={true}
+                          />
+                        )}
+
                         {/* Layer 3: Instagram guide (unfiltered) */}
                         {showOverlay && <InstagramOverlay />}
                       </div>
-                      
+
                       {selectedImage && (
                         <div className="mt-6 flex gap-4">
                           <button
@@ -424,7 +499,7 @@ const App: React.FC = () => {
                     <div className="space-y-4 max-h-[1000px] overflow-y-auto pr-2 custom-scrollbar">
                       <p className="text-sm font-semibold text-slate-500 uppercase tracking-widest sticky top-0 bg-[#0f172a] py-2 z-10">履歴</p>
                       {generatedImages.map(img => (
-                        <div 
+                        <div
                           key={img.id}
                           onClick={() => setSelectedImageId(img.id)}
                           className={`relative instagram-aspect w-32 md:w-full max-w-[240px] mx-auto rounded-3xl overflow-hidden cursor-pointer transition-all border-2 ${selectedImageId === img.id ? 'border-indigo-500 ring-4 ring-indigo-500/20' : 'border-slate-800 hover:border-slate-600'}`}
@@ -450,7 +525,7 @@ const App: React.FC = () => {
               </div>
             </div>
           </div>
-        ) : (
+        ) : activeTab === 'brand' ? (
           <div className="p-4 md:p-8 lg:p-12 max-w-4xl">
             <header className="mb-12">
               <h2 className="text-3xl font-bold text-white mb-2">ブランドプリセット設定</h2>
@@ -467,15 +542,15 @@ const App: React.FC = () => {
                   <div className="flex items-center gap-6">
                     <div className="w-20 h-20 rounded-2xl shadow-xl shadow-black/20 shrink-0 border-2 border-slate-700" style={{ backgroundColor: brand.primaryColor }} />
                     <div className="flex-1 space-y-4">
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={brand.primaryColor}
                         onChange={(e) => setBrand({ ...brand, primaryColor: e.target.value })}
                         className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-lg font-mono outline-none focus:ring-2 focus:ring-indigo-500"
                       />
                       <div className="flex gap-2">
                         {['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#000000', '#ffffff'].map(c => (
-                          <button 
+                          <button
                             key={c}
                             onClick={() => setBrand({ ...brand, primaryColor: c })}
                             className="w-6 h-6 rounded-full border border-white/10"
@@ -493,14 +568,32 @@ const App: React.FC = () => {
                     ロゴアップロード
                   </h4>
                   {brand.logoUrl ? (
-                    <div className="relative border-2 border-slate-700 rounded-2xl h-32 flex items-center justify-center bg-slate-900/50">
-                      <img src={brand.logoUrl} alt="Logo" className="max-h-24 max-w-full object-contain" />
-                      <button
-                        onClick={() => setBrand({ ...brand, logoUrl: '' })}
-                        className="absolute top-2 right-2 w-6 h-6 bg-red-600 hover:bg-red-500 rounded-full flex items-center justify-center text-white text-xs transition-colors"
-                      >
-                        ✕
-                      </button>
+                    <div className="space-y-4">
+                      <div className="relative border-2 border-slate-700 rounded-2xl h-32 flex items-center justify-center bg-slate-900/50">
+                        <img src={brand.logoUrl} alt="Logo" className="max-h-24 max-w-full object-contain" />
+                        <button
+                          onClick={() => setBrand({ ...brand, logoUrl: '', extractedColors: undefined })}
+                          className="absolute top-2 right-2 w-6 h-6 bg-red-600 hover:bg-red-500 rounded-full flex items-center justify-center text-white text-xs transition-colors"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      {brand.extractedColors && (
+                        <div className="space-y-2">
+                          <p className="text-xs text-slate-500 uppercase tracking-widest font-bold">ロゴから抽出されたカラー</p>
+                          <div className="flex gap-2">
+                            {brand.extractedColors.palette.map((color, i) => (
+                              <button
+                                key={i}
+                                onClick={() => setBrand({ ...brand, primaryColor: color })}
+                                className="w-8 h-8 rounded-lg border border-slate-600 hover:scale-110 transition-transform"
+                                style={{ backgroundColor: color }}
+                                title={color}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <label className="border-2 border-dashed border-slate-700 rounded-2xl h-32 flex flex-col items-center justify-center hover:bg-slate-700/50 transition-colors cursor-pointer group">
@@ -510,15 +603,7 @@ const App: React.FC = () => {
                         type="file"
                         accept="image/png,image/svg+xml,image/jpeg,image/webp"
                         className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          const reader = new FileReader();
-                          reader.onload = () => {
-                            setBrand({ ...brand, logoUrl: reader.result as string });
-                          };
-                          reader.readAsDataURL(file);
-                        }}
+                        onChange={handleLogoUpload}
                       />
                     </label>
                   )}
@@ -555,15 +640,11 @@ const App: React.FC = () => {
 
               <div className="flex justify-end gap-4">
                 <button className="px-8 py-3 rounded-2xl bg-slate-800 text-white font-bold hover:bg-slate-700 transition-colors">キャンセル</button>
-                <button 
+                <button
                   onClick={() => {
                     saveBrandConfig(brand);
                     setActiveTab('dashboard');
-                    setToast({
-                      id: Date.now().toString(),
-                      message: 'ブランド設定を保存しました。',
-                      type: 'success',
-                    });
+                    showToast('ブランド設定を保存しました。', 'success');
                   }}
                   className="px-10 py-3 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-500 transition-all shadow-xl shadow-indigo-600/20"
                 >
@@ -571,6 +652,19 @@ const App: React.FC = () => {
                 </button>
               </div>
             </div>
+          </div>
+        ) : (
+          /* Gallery Tab */
+          <div className="p-4 md:p-8 lg:p-12">
+            <header className="mb-12">
+              <h2 className="text-3xl font-bold text-white mb-2">保存済み画像</h2>
+              <p className="text-slate-400">過去に生成・保存された画像の一覧です。</p>
+            </header>
+            <SavedGallery
+              images={savedImages}
+              onImagesChange={setSavedImages}
+              onToast={showToast}
+            />
           </div>
         )}
       </main>

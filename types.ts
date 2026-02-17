@@ -1,8 +1,15 @@
 
+export interface ExtractedColors {
+  dominant: string;
+  palette: string[];
+}
+
 export interface BrandConfig {
   logoUrl: string;
   primaryColor: string;
   fontPreference: string;
+  extractedColors?: ExtractedColors;
+  useLogoColors: boolean;
 }
 
 export type LayoutType =
@@ -21,6 +28,13 @@ export interface TextOverlaySettings {
   textVisible: boolean;
 }
 
+export interface LogoOverlaySettings {
+  visible: boolean;
+  x: number;
+  y: number;
+  scale: number;
+}
+
 export interface GeneratedImage {
   id: string;
   url: string;
@@ -32,7 +46,18 @@ export interface GeneratedImage {
     brightness: number;
     brandOverlay: boolean;
     textOverlay: TextOverlaySettings;
+    logoOverlay: LogoOverlaySettings;
   };
+}
+
+export interface SavedImage {
+  id: string;
+  imageUrl: string;
+  thumbnailUrl: string;
+  prompt: string;
+  slideNumber?: number;
+  originalMessage?: string;
+  createdAt: number;
 }
 
 export interface TemplateImage {

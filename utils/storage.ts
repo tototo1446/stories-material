@@ -26,7 +26,7 @@ export function loadBrandConfig(): BrandConfig | null {
     }
 
     const config = JSON.parse(serialized) as BrandConfig;
-    
+
     // 型チェック（基本的な検証）
     if (
       typeof config === 'object' &&
@@ -34,7 +34,11 @@ export function loadBrandConfig(): BrandConfig | null {
       typeof config.fontPreference === 'string' &&
       typeof config.logoUrl === 'string'
     ) {
-      return config;
+      return {
+        ...config,
+        useLogoColors: config.useLogoColors ?? false,
+        extractedColors: config.extractedColors ?? undefined,
+      };
     }
 
     console.warn('保存されたブランド設定の形式が不正です。');
