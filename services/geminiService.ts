@@ -437,8 +437,8 @@ export const generateStoryBackgrounds = async (
               logoOverlay: {
                 visible: false,
                 x: 50,
-                y: 10,
-                scale: 0.3,
+                y: 85,
+                scale: 1.0,
               },
             },
           });
@@ -520,8 +520,8 @@ export const generateStoryBackgrounds = async (
             logoOverlay: {
               visible: false,
               x: 50,
-              y: 10,
-              scale: 0.3,
+              y: 85,
+              scale: 1.0,
             },
           },
         });

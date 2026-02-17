@@ -52,10 +52,10 @@ export const LogoOverlay: React.FC<LogoOverlayProps> = ({
     setIsDragging(false);
   };
 
+  const logoWidth = `${Math.max(8, settings.scale * 30)}%`;
+
   return (
-    <img
-      src={logoUrl}
-      alt="Logo"
+    <div
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -63,18 +63,28 @@ export const LogoOverlay: React.FC<LogoOverlayProps> = ({
         position: 'absolute',
         left: `${settings.x}%`,
         top: `${settings.y}%`,
-        transform: `translate(-50%, -50%) scale(${settings.scale})`,
-        maxWidth: '40%',
-        maxHeight: '20%',
-        objectFit: 'contain',
+        transform: 'translate(-50%, -50%)',
+        width: logoWidth,
         zIndex: 25,
         cursor: interactive ? (isDragging ? 'grabbing' : 'grab') : 'default',
         pointerEvents: interactive ? 'auto' : 'none',
         userSelect: 'none',
-        filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
         touchAction: 'none',
       }}
       draggable={false}
-    />
+    >
+      <img
+        src={logoUrl}
+        alt="Logo"
+        style={{
+          width: '100%',
+          height: 'auto',
+          objectFit: 'contain',
+          filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.5))',
+          pointerEvents: 'none',
+        }}
+        draggable={false}
+      />
+    </div>
   );
 };

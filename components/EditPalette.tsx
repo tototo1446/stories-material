@@ -41,7 +41,7 @@ export const EditPalette: React.FC<EditPaletteProps> = ({ image, onUpdate, brand
               <button
                 onClick={() => onUpdate({
                   logoOverlay: {
-                    ...(image.settings.logoOverlay || { visible: false, x: 50, y: 10, scale: 0.3 }),
+                    ...(image.settings.logoOverlay || { visible: false, x: 50, y: 85, scale: 1.0 }),
                     visible: !(image.settings.logoOverlay?.visible),
                   },
                 })}
@@ -55,14 +55,14 @@ export const EditPalette: React.FC<EditPaletteProps> = ({ image, onUpdate, brand
               <div className="space-y-3">
                 <div className="flex justify-between">
                   <label className="text-sm font-medium text-slate-300">ロゴサイズ</label>
-                  <span className="text-xs text-slate-400 font-mono">{Math.round((image.settings.logoOverlay?.scale || 0.3) * 100)}%</span>
+                  <span className="text-xs text-slate-400 font-mono">{Math.round((image.settings.logoOverlay?.scale || 1.0) * 100)}%</span>
                 </div>
                 <input
                   type="range"
                   min="10"
                   max="200"
                   step="5"
-                  value={Math.round((image.settings.logoOverlay?.scale || 0.3) * 100)}
+                  value={Math.round((image.settings.logoOverlay?.scale || 1.0) * 100)}
                   onChange={(e) => onUpdate({
                     logoOverlay: {
                       ...(image.settings.logoOverlay || { visible: true, x: 50, y: 10, scale: 0.3 }),
