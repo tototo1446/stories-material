@@ -12,7 +12,8 @@ import { TemplateGallery } from './components/TemplateGallery';
 import { SavedGallery } from './components/SavedGallery';
 import { ErrorToast, ToastMessage } from './components/ErrorToast';
 import { downloadImage, downloadAllImages, flattenImageForDownload } from './utils/imageDownload';
-import { saveBrandPresets, loadBrandPresets, saveActivePresetId, loadActivePresetId, migrateOldBrandConfig } from './utils/storage';
+import { saveActivePresetId, loadActivePresetId, migrateOldBrandConfig } from './utils/storage';
+import { loadBrandPresetsFromDB, saveBrandPresetToDB, updateBrandPresetInDB, deleteBrandPresetFromDB, migrateBrandPresetsToSupabase } from './utils/brandPresetStorage';
 import { loadAllTemplates } from './utils/templateStorage';
 import { extractColorsFromImage } from './utils/colorExtraction';
 import { saveGeneratedImage, loadSavedImages } from './utils/generatedImageStorage';
@@ -71,30 +72,46 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // プリセットの読み込み（マイグレーション含む）
+  // プリセットの読み込み（Supabase + マイグレーション）
   useEffect(() => {
-    let presets = loadBrandPresets();
-    if (presets.length === 0) {
-      const migrated = migrateOldBrandConfig();
-      if (migrated) {
-        presets = [migrated];
-        saveBrandPresets(presets);
-        saveActivePresetId(migrated.id);
-      }
-    }
-    setBrandPresets(presets);
+    const initPresets = async () => {
+      try {
+        // 1. localStorage → Supabase マイグレーション（旧データがあれば移行）
+        const migrated = migrateOldBrandConfig();
+        if (migrated) {
+          // 旧単体設定をSupabaseに保存
+          await migrateBrandPresetsToSupabase();
+        } else {
+          // プリセット配列がlocalStorageに残っていれば移行
+          await migrateBrandPresetsToSupabase();
+        }
 
-    const savedActiveId = loadActivePresetId();
-    if (savedActiveId) {
-      const activePreset = presets.find(p => p.id === savedActiveId);
-      if (activePreset) {
-        setActivePresetId(activePreset.id);
-        setBrand(activePreset.config);
+        // 2. Supabase からプリセットを読み込み
+        const presets = await loadBrandPresetsFromDB();
+        setBrandPresets(presets);
+
+        // 3. アクティブプリセットを復元（localStorage管理）
+        const savedActiveId = loadActivePresetId();
+        if (savedActiveId) {
+          const activePreset = presets.find(p => p.id === savedActiveId);
+          if (activePreset) {
+            setActivePresetId(activePreset.id);
+            setBrand(activePreset.config);
+          } else if (presets.length > 0) {
+            // 保存されたIDが見つからない場合は最初のプリセットを選択
+            setActivePresetId(presets[0].id);
+            setBrand(presets[0].config);
+            saveActivePresetId(presets[0].id);
+          }
+        } else if (presets.length > 0) {
+          setActivePresetId(presets[0].id);
+          setBrand(presets[0].config);
+        }
+      } catch (error) {
+        console.error('プリセット初期化エラー:', error);
       }
-    } else if (presets.length > 0) {
-      setActivePresetId(presets[0].id);
-      setBrand(presets[0].config);
-    }
+    };
+    initPresets();
   }, []);
 
   // ロゴがあるのにextractedColorsが無い場合、自動抽出
@@ -167,74 +184,84 @@ const App: React.FC = () => {
   };
 
   // プリセット保存
-  const handleSavePreset = () => {
-    const now = Date.now();
-    let updatedPresets: BrandPreset[];
+  const handleSavePreset = async () => {
+    try {
+      if (editingPresetId) {
+        // 既存プリセットの更新
+        const name = editingPresetName || brandPresets.find(p => p.id === editingPresetId)?.name || '';
+        await updateBrandPresetInDB(editingPresetId, name, { ...editingBrand });
 
-    if (editingPresetId) {
-      // 既存プリセットの更新
-      updatedPresets = brandPresets.map(p =>
-        p.id === editingPresetId
-          ? { ...p, name: editingPresetName || p.name, config: { ...editingBrand }, updatedAt: now }
-          : p
-      );
-      // アクティブなプリセットを編集した場合、brandも更新
-      if (activePresetId === editingPresetId) {
-        setBrand({ ...editingBrand });
+        const now = Date.now();
+        const updatedPresets = brandPresets.map(p =>
+          p.id === editingPresetId
+            ? { ...p, name, config: { ...editingBrand }, updatedAt: now }
+            : p
+        );
+        setBrandPresets(updatedPresets);
+
+        // アクティブなプリセットを編集した場合、brandも更新
+        if (activePresetId === editingPresetId) {
+          setBrand({ ...editingBrand });
+        }
+      } else {
+        // 新規プリセット
+        const name = editingPresetName || `プリセット ${brandPresets.length + 1}`;
+        const newPreset = await saveBrandPresetToDB(name, { ...editingBrand });
+
+        const updatedPresets = [...brandPresets, newPreset];
+        setBrandPresets(updatedPresets);
+
+        // プリセットが無かった場合、自動的にアクティブに
+        if (brandPresets.length === 0) {
+          setActivePresetId(newPreset.id);
+          setBrand({ ...editingBrand });
+          saveActivePresetId(newPreset.id);
+        }
       }
-    } else {
-      // 新規プリセット
-      const newPreset: BrandPreset = {
-        id: `preset-${now}`,
-        name: editingPresetName || `プリセット ${brandPresets.length + 1}`,
-        config: { ...editingBrand },
-        createdAt: now,
-        updatedAt: now,
-      };
-      updatedPresets = [...brandPresets, newPreset];
-      // プリセットが無かった場合、自動的にアクティブに
-      if (brandPresets.length === 0) {
-        setActivePresetId(newPreset.id);
-        setBrand({ ...editingBrand });
-        saveActivePresetId(newPreset.id);
-      }
+
+      setIsEditingPreset(false);
+      showToast('ブランドプリセットを保存しました。', 'success');
+    } catch (error) {
+      console.error('プリセット保存エラー:', error);
+      showToast('プリセットの保存に失敗しました。', 'error');
     }
-
-    setBrandPresets(updatedPresets);
-    saveBrandPresets(updatedPresets);
-    setIsEditingPreset(false);
-    showToast('ブランドプリセットを保存しました。', 'success');
   };
 
   // プリセット削除
-  const handleDeletePreset = (presetId: string) => {
-    const updatedPresets = brandPresets.filter(p => p.id !== presetId);
-    setBrandPresets(updatedPresets);
-    saveBrandPresets(updatedPresets);
+  const handleDeletePreset = async (presetId: string) => {
+    try {
+      await deleteBrandPresetFromDB(presetId);
 
-    if (activePresetId === presetId) {
-      if (updatedPresets.length > 0) {
-        setActivePresetId(updatedPresets[0].id);
-        setBrand(updatedPresets[0].config);
-        saveActivePresetId(updatedPresets[0].id);
-      } else {
-        setActivePresetId(null);
-        saveActivePresetId(null);
-        setBrand({
-          logoUrl: '',
-          primaryColor: '#6366f1',
-          fontPreference: 'Noto Sans JP Bold',
-          useLogoColors: false,
-          useLogoOverlay: false,
-        });
+      const updatedPresets = brandPresets.filter(p => p.id !== presetId);
+      setBrandPresets(updatedPresets);
+
+      if (activePresetId === presetId) {
+        if (updatedPresets.length > 0) {
+          setActivePresetId(updatedPresets[0].id);
+          setBrand(updatedPresets[0].config);
+          saveActivePresetId(updatedPresets[0].id);
+        } else {
+          setActivePresetId(null);
+          saveActivePresetId(null);
+          setBrand({
+            logoUrl: '',
+            primaryColor: '#6366f1',
+            fontPreference: 'Noto Sans JP Bold',
+            useLogoColors: false,
+            useLogoOverlay: false,
+          });
+        }
       }
-    }
 
-    if (editingPresetId === presetId) {
-      setIsEditingPreset(false);
-    }
+      if (editingPresetId === presetId) {
+        setIsEditingPreset(false);
+      }
 
-    showToast('プリセットを削除しました。', 'info');
+      showToast('プリセットを削除しました。', 'info');
+    } catch (error) {
+      console.error('プリセット削除エラー:', error);
+      showToast('プリセットの削除に失敗しました。', 'error');
+    }
   };
 
   // 編集用ロゴアップロード
