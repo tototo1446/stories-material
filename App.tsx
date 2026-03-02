@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { BrandConfig, GeneratedImage, SavedImage, TemplateImage } from './types';
+import { BrandConfig, BrandPreset, GeneratedImage, SavedImage, TemplateImage } from './types';
 import { SAMPLE_SCRIPTS, FONT_MAP, DEFAULT_FONT } from './constants';
 import { generateStoryBackgrounds } from './services/imageGenerationService';
 import { EditPalette } from './components/EditPalette';
@@ -12,7 +12,7 @@ import { TemplateGallery } from './components/TemplateGallery';
 import { SavedGallery } from './components/SavedGallery';
 import { ErrorToast, ToastMessage } from './components/ErrorToast';
 import { downloadImage, downloadAllImages, flattenImageForDownload } from './utils/imageDownload';
-import { saveBrandConfig, loadBrandConfig } from './utils/storage';
+import { saveBrandPresets, loadBrandPresets, saveActivePresetId, loadActivePresetId, migrateOldBrandConfig } from './utils/storage';
 import { loadAllTemplates } from './utils/templateStorage';
 import { extractColorsFromImage } from './utils/colorExtraction';
 import { saveGeneratedImage, loadSavedImages } from './utils/generatedImageStorage';
@@ -26,7 +26,22 @@ const App: React.FC = () => {
     primaryColor: '#6366f1',
     fontPreference: 'Noto Sans JP Bold',
     useLogoColors: false,
+    useLogoOverlay: false,
   });
+
+  // プリセット管理
+  const [brandPresets, setBrandPresets] = useState<BrandPreset[]>([]);
+  const [activePresetId, setActivePresetId] = useState<string | null>(null);
+  const [editingPresetId, setEditingPresetId] = useState<string | null>(null); // null=新規, string=編集中
+  const [editingPresetName, setEditingPresetName] = useState('');
+  const [editingBrand, setEditingBrand] = useState<BrandConfig>({
+    logoUrl: '',
+    primaryColor: '#6366f1',
+    fontPreference: 'Noto Sans JP Bold',
+    useLogoColors: false,
+    useLogoOverlay: false,
+  });
+  const [isEditingPreset, setIsEditingPreset] = useState(false);
 
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   const [savedImages, setSavedImages] = useState<SavedImage[]>([]);
@@ -56,13 +71,42 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // ブランド設定の読み込み
+  // プリセットの読み込み（マイグレーション含む）
   useEffect(() => {
-    const savedBrand = loadBrandConfig();
-    if (savedBrand) {
-      setBrand(savedBrand);
+    let presets = loadBrandPresets();
+    if (presets.length === 0) {
+      const migrated = migrateOldBrandConfig();
+      if (migrated) {
+        presets = [migrated];
+        saveBrandPresets(presets);
+        saveActivePresetId(migrated.id);
+      }
+    }
+    setBrandPresets(presets);
+
+    const savedActiveId = loadActivePresetId();
+    if (savedActiveId) {
+      const activePreset = presets.find(p => p.id === savedActiveId);
+      if (activePreset) {
+        setActivePresetId(activePreset.id);
+        setBrand(activePreset.config);
+      }
+    } else if (presets.length > 0) {
+      setActivePresetId(presets[0].id);
+      setBrand(presets[0].config);
     }
   }, []);
+
+  // ロゴがあるのにextractedColorsが無い場合、自動抽出
+  useEffect(() => {
+    if (brand.logoUrl && !brand.extractedColors) {
+      extractColorsFromImage(brand.logoUrl)
+        .then(extractedColors => {
+          setBrand(prev => ({ ...prev, extractedColors }));
+        })
+        .catch(() => {});
+    }
+  }, [brand.logoUrl, brand.extractedColors]);
 
   // テンプレートの読み込み
   useEffect(() => {
@@ -78,12 +122,131 @@ const App: React.FC = () => {
       .catch(console.error);
   }, []);
 
-  // ブランド設定の自動保存
-  useEffect(() => {
-    if (brand.primaryColor !== '#6366f1' || brand.fontPreference !== 'Noto Sans JP Bold' || brand.logoUrl !== '' || brand.useLogoColors) {
-      saveBrandConfig(brand);
+  // プリセット選択ハンドラ
+  const handleSelectPreset = (presetId: string) => {
+    const preset = brandPresets.find(p => p.id === presetId);
+    if (preset) {
+      setActivePresetId(preset.id);
+      setBrand(preset.config);
+      saveActivePresetId(preset.id);
     }
-  }, [brand]);
+  };
+
+  // プリセット編集開始
+  const handleStartEditPreset = (preset: BrandPreset) => {
+    setEditingPresetId(preset.id);
+    setEditingPresetName(preset.name);
+    setEditingBrand({ ...preset.config });
+    setIsEditingPreset(true);
+  };
+
+  // 新規プリセット作成開始
+  const handleStartNewPreset = () => {
+    setEditingPresetId(null);
+    setEditingPresetName('');
+    setEditingBrand({
+      logoUrl: '',
+      primaryColor: '#6366f1',
+      fontPreference: 'Noto Sans JP Bold',
+      useLogoColors: false,
+      useLogoOverlay: false,
+    });
+    setIsEditingPreset(true);
+  };
+
+  // プリセット保存
+  const handleSavePreset = () => {
+    const now = Date.now();
+    let updatedPresets: BrandPreset[];
+
+    if (editingPresetId) {
+      // 既存プリセットの更新
+      updatedPresets = brandPresets.map(p =>
+        p.id === editingPresetId
+          ? { ...p, name: editingPresetName || p.name, config: { ...editingBrand }, updatedAt: now }
+          : p
+      );
+      // アクティブなプリセットを編集した場合、brandも更新
+      if (activePresetId === editingPresetId) {
+        setBrand({ ...editingBrand });
+      }
+    } else {
+      // 新規プリセット
+      const newPreset: BrandPreset = {
+        id: `preset-${now}`,
+        name: editingPresetName || `プリセット ${brandPresets.length + 1}`,
+        config: { ...editingBrand },
+        createdAt: now,
+        updatedAt: now,
+      };
+      updatedPresets = [...brandPresets, newPreset];
+      // プリセットが無かった場合、自動的にアクティブに
+      if (brandPresets.length === 0) {
+        setActivePresetId(newPreset.id);
+        setBrand({ ...editingBrand });
+        saveActivePresetId(newPreset.id);
+      }
+    }
+
+    setBrandPresets(updatedPresets);
+    saveBrandPresets(updatedPresets);
+    setIsEditingPreset(false);
+    showToast('ブランドプリセットを保存しました。', 'success');
+  };
+
+  // プリセット削除
+  const handleDeletePreset = (presetId: string) => {
+    const updatedPresets = brandPresets.filter(p => p.id !== presetId);
+    setBrandPresets(updatedPresets);
+    saveBrandPresets(updatedPresets);
+
+    if (activePresetId === presetId) {
+      if (updatedPresets.length > 0) {
+        setActivePresetId(updatedPresets[0].id);
+        setBrand(updatedPresets[0].config);
+        saveActivePresetId(updatedPresets[0].id);
+      } else {
+        setActivePresetId(null);
+        saveActivePresetId(null);
+        setBrand({
+          logoUrl: '',
+          primaryColor: '#6366f1',
+          fontPreference: 'Noto Sans JP Bold',
+          useLogoColors: false,
+          useLogoOverlay: false,
+        });
+      }
+    }
+
+    if (editingPresetId === presetId) {
+      setIsEditingPreset(false);
+    }
+
+    showToast('プリセットを削除しました。', 'info');
+  };
+
+  // 編集用ロゴアップロード
+  const handleEditingLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const logoUrl = reader.result as string;
+      try {
+        const extractedColors = await extractColorsFromImage(logoUrl);
+        setEditingBrand(prev => ({
+          ...prev,
+          logoUrl,
+          extractedColors,
+          primaryColor: extractedColors.dominant,
+        }));
+        showToast('ロゴからカラーパレットを抽出しました。', 'success');
+      } catch {
+        setEditingBrand(prev => ({ ...prev, logoUrl }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
 
@@ -126,13 +289,23 @@ const App: React.FC = () => {
       if (newImages.length === 0) {
         showToast('画像が生成されませんでした。もう一度お試しください。', 'error');
       } else {
-        setGeneratedImages(prev => [...newImages, ...prev]);
-        setSelectedImageId(newImages[0].id);
-        showToast(`${newImages.length}枚の背景画像を生成しました！`, 'success');
+        // ロゴ画像挿入がONなら、生成画像のlogoOverlay.visibleを自動有効化
+        const finalImages = brand.useLogoOverlay
+          ? newImages.map(img => ({
+              ...img,
+              settings: {
+                ...img.settings,
+                logoOverlay: { ...img.settings.logoOverlay, visible: true },
+              },
+            }))
+          : newImages;
+        setGeneratedImages(prev => [...finalImages, ...prev]);
+        setSelectedImageId(finalImages[0].id);
+        showToast(`${finalImages.length}枚の背景画像を生成しました！`, 'success');
 
         // サーバーに自動保存
         setProgressMessage('画像をサーバーに保存中...');
-        for (const img of newImages) {
+        for (const img of finalImages) {
           try {
             const saved = await saveGeneratedImage(img, { originalMessage: message });
             setSavedImages(prev => [saved, ...prev]);
@@ -292,6 +465,27 @@ const App: React.FC = () => {
                   <p className="text-slate-400">メッセージを入力して、背景画像を3パターン生成します。</p>
                 </header>
 
+                {/* プリセット選択 */}
+                <div className="bg-slate-800/30 p-4 rounded-2xl border border-slate-700/50">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 block">使用ブランド</label>
+                  {brandPresets.length > 0 ? (
+                    <select
+                      value={activePresetId || ''}
+                      onChange={(e) => handleSelectPreset(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm font-medium text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 appearance-none cursor-pointer"
+                      style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '20px' }}
+                    >
+                      {brandPresets.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="text-sm text-slate-500">
+                      <button onClick={() => setActiveTab('brand')} className="text-indigo-400 hover:underline">ブランドプリセットタブ</button>で設定してください
+                    </p>
+                  )}
+                </div>
+
                 <div className="bg-slate-800/30 p-6 rounded-3xl border border-slate-700/50 backdrop-blur-sm mb-8">
                   <TemplateGallery
                     templates={templates}
@@ -335,9 +529,12 @@ const App: React.FC = () => {
                     />
                   </div>
 
-                  {/* ロゴカラー採用トグル */}
-                  {brand.logoUrl && brand.extractedColors && (
-                    <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-700 space-y-3">
+                  {/* ロゴ関連トグル */}
+                  {brand.logoUrl && (
+                    <div className="p-4 bg-slate-900/50 rounded-2xl border border-slate-700 space-y-4">
+                      <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">ロゴ設定</p>
+
+                      {/* ロゴカラー採用 */}
                       <div className="flex items-center justify-between">
                         <div>
                           <label className="text-sm font-medium text-slate-300">ロゴカラー採用</label>
@@ -350,15 +547,34 @@ const App: React.FC = () => {
                           <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${brand.useLogoColors ? 'translate-x-7' : 'translate-x-1'}`} />
                         </button>
                       </div>
-                      <div className="flex gap-2">
-                        {brand.extractedColors.palette.map((color, i) => (
-                          <div
-                            key={i}
-                            className="w-6 h-6 rounded-lg border border-slate-600"
-                            style={{ backgroundColor: color }}
-                            title={color}
-                          />
-                        ))}
+
+                      {brand.extractedColors && (
+                        <div className="flex gap-2">
+                          {brand.extractedColors.palette.map((color, i) => (
+                            <div
+                              key={i}
+                              className="w-6 h-6 rounded-lg border border-slate-600"
+                              style={{ backgroundColor: color }}
+                              title={color}
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      {/* ロゴ画像挿入 */}
+                      <div className="pt-3 border-t border-slate-700/50">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <label className="text-sm font-medium text-slate-300">ロゴ画像挿入</label>
+                            <p className="text-[10px] text-slate-500">生成画像にロゴを重ねて配置</p>
+                          </div>
+                          <button
+                            onClick={() => setBrand(prev => ({ ...prev, useLogoOverlay: !prev.useLogoOverlay }))}
+                            className={`w-12 h-6 rounded-full transition-colors relative ${brand.useLogoOverlay ? 'bg-indigo-600' : 'bg-slate-600'}`}
+                          >
+                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${brand.useLogoOverlay ? 'translate-x-7' : 'translate-x-1'}`} />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -529,129 +745,230 @@ const App: React.FC = () => {
           <div className="p-4 md:p-8 lg:p-12 max-w-4xl">
             <header className="mb-12">
               <h2 className="text-3xl font-bold text-white mb-2">ブランドプリセット設定</h2>
-              <p className="text-slate-400">一貫性のあるデザインを維持するための初期設定です。</p>
+              <p className="text-slate-400">複数のブランドを登録し、作成時に切り替えて使えます。</p>
             </header>
 
-            <div className="space-y-12">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="bg-slate-800/50 p-8 rounded-3xl border border-slate-700">
-                  <h4 className="text-lg font-bold mb-6 flex items-center gap-2">
-                    <div className="w-2 h-2 bg-indigo-500 rounded-full" />
-                    メインカラー (HEX)
-                  </h4>
-                  <div className="flex items-center gap-6">
-                    <div className="w-20 h-20 rounded-2xl shadow-xl shadow-black/20 shrink-0 border-2 border-slate-700" style={{ backgroundColor: brand.primaryColor }} />
-                    <div className="flex-1 space-y-4">
-                      <input
-                        type="text"
-                        value={brand.primaryColor}
-                        onChange={(e) => setBrand({ ...brand, primaryColor: e.target.value })}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-lg font-mono outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                      <div className="flex gap-2">
-                        {['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#000000', '#ffffff'].map(c => (
-                          <button
-                            key={c}
-                            onClick={() => setBrand({ ...brand, primaryColor: c })}
-                            className="w-6 h-6 rounded-full border border-white/10"
-                            style={{ backgroundColor: c }}
-                          />
-                        ))}
-                      </div>
-                    </div>
+            {/* プリセット一覧 */}
+            {!isEditingPreset && (
+              <div className="space-y-6">
+                {brandPresets.length === 0 ? (
+                  <div className="bg-slate-800/20 border border-dashed border-slate-700 rounded-3xl p-12 text-center">
+                    <p className="text-slate-400 mb-4">ブランドプリセットがまだありません。</p>
                   </div>
-                </div>
-
-                <div className="bg-slate-800/50 p-8 rounded-3xl border border-slate-700">
-                  <h4 className="text-lg font-bold mb-6 flex items-center gap-2">
-                    <div className="w-2 h-2 bg-purple-500 rounded-full" />
-                    ロゴアップロード
-                  </h4>
-                  {brand.logoUrl ? (
-                    <div className="space-y-4">
-                      <div className="relative border-2 border-slate-700 rounded-2xl h-32 flex items-center justify-center bg-slate-900/50">
-                        <img src={brand.logoUrl} alt="Logo" className="max-h-24 max-w-full object-contain" />
-                        <button
-                          onClick={() => setBrand({ ...brand, logoUrl: '', extractedColors: undefined })}
-                          className="absolute top-2 right-2 w-6 h-6 bg-red-600 hover:bg-red-500 rounded-full flex items-center justify-center text-white text-xs transition-colors"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                      {brand.extractedColors && (
-                        <div className="space-y-2">
-                          <p className="text-xs text-slate-500 uppercase tracking-widest font-bold">ロゴから抽出されたカラー</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {brandPresets.map(preset => (
+                      <div
+                        key={preset.id}
+                        className={`bg-slate-800/50 p-6 rounded-2xl border transition-all ${activePresetId === preset.id ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-slate-700 hover:border-slate-600'}`}
+                      >
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex items-center gap-3">
+                            <h4 className="text-lg font-bold text-white">{preset.name}</h4>
+                            {activePresetId === preset.id && (
+                              <span className="px-2 py-0.5 text-[10px] font-bold bg-indigo-600 text-white rounded-full uppercase tracking-wider">使用中</span>
+                            )}
+                          </div>
                           <div className="flex gap-2">
-                            {brand.extractedColors.palette.map((color, i) => (
-                              <button
-                                key={i}
-                                onClick={() => setBrand({ ...brand, primaryColor: color })}
-                                className="w-8 h-8 rounded-lg border border-slate-600 hover:scale-110 transition-transform"
-                                style={{ backgroundColor: color }}
-                                title={color}
-                              />
-                            ))}
+                            <button
+                              onClick={() => handleStartEditPreset(preset)}
+                              className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                              title="編集"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                            </button>
+                            <button
+                              onClick={() => handleDeletePreset(preset.id)}
+                              className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-700 hover:bg-red-600 text-slate-300 hover:text-white transition-colors"
+                              title="削除"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            </button>
                           </div>
                         </div>
-                      )}
-                    </div>
-                  ) : (
-                    <label className="border-2 border-dashed border-slate-700 rounded-2xl h-32 flex flex-col items-center justify-center hover:bg-slate-700/50 transition-colors cursor-pointer group">
-                      <svg className="w-8 h-8 text-slate-500 mb-2 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0l-4-4m4 4v12" /></svg>
-                      <p className="text-xs text-slate-500">透過PNG推奨</p>
-                      <input
-                        type="file"
-                        accept="image/png,image/svg+xml,image/jpeg,image/webp"
-                        className="hidden"
-                        onChange={handleLogoUpload}
-                      />
-                    </label>
-                  )}
-                </div>
-              </div>
 
-              <div className="bg-slate-800/50 p-8 rounded-3xl border border-slate-700">
-                <h4 className="text-lg font-bold mb-6">定型フォント指示</h4>
-                <div className="space-y-6">
-                  <div className="flex flex-wrap gap-4">
-                    {Object.keys(FONT_MAP).map(label => (
-                      <button
-                        key={label}
-                        onClick={() => setBrand({ ...brand, fontPreference: label })}
-                        className={`px-6 py-3 rounded-2xl border text-sm transition-all ${brand.fontPreference === label ? 'bg-white text-slate-900 font-bold border-white' : 'bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500'}`}
-                      >
-                        {label}
-                      </button>
+                        {/* カラースウォッチ＆ロゴサムネイル */}
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-xl border border-slate-600 shrink-0" style={{ backgroundColor: preset.config.primaryColor }} />
+                          {preset.config.extractedColors && (
+                            <div className="flex gap-1">
+                              {preset.config.extractedColors.palette.slice(0, 4).map((c, i) => (
+                                <div key={i} className="w-5 h-5 rounded-md border border-slate-600" style={{ backgroundColor: c }} />
+                              ))}
+                            </div>
+                          )}
+                          {preset.config.logoUrl && (
+                            <div className="ml-auto w-12 h-12 rounded-xl border border-slate-700 bg-slate-900/50 flex items-center justify-center overflow-hidden">
+                              <img src={preset.config.logoUrl} alt="" className="max-w-full max-h-full object-contain" />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="mt-3 flex items-center gap-3 text-xs text-slate-500">
+                          <span>{preset.config.fontPreference}</span>
+                          {activePresetId !== preset.id && (
+                            <button
+                              onClick={() => handleSelectPreset(preset.id)}
+                              className="ml-auto px-3 py-1 bg-indigo-600/20 text-indigo-400 rounded-lg hover:bg-indigo-600/30 transition-colors font-medium"
+                            >
+                              使用する
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     ))}
                   </div>
-                  <div className="p-6 bg-slate-900 rounded-2xl">
-                    <p className="text-slate-500 text-xs mb-4 uppercase tracking-widest font-bold">Preview Text</p>
-                    {(() => {
-                      const current = FONT_MAP[brand.fontPreference] || DEFAULT_FONT;
-                      return (
-                        <p className="text-4xl" style={{ fontFamily: current.family, fontWeight: current.weight }}>
-                          The quick brown fox jumps over the lazy dog.
-                        </p>
-                      );
-                    })()}
-                  </div>
-                </div>
-              </div>
+                )}
 
-              <div className="flex justify-end gap-4">
-                <button className="px-8 py-3 rounded-2xl bg-slate-800 text-white font-bold hover:bg-slate-700 transition-colors">キャンセル</button>
                 <button
-                  onClick={() => {
-                    saveBrandConfig(brand);
-                    setActiveTab('dashboard');
-                    showToast('ブランド設定を保存しました。', 'success');
-                  }}
-                  className="px-10 py-3 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-500 transition-all shadow-xl shadow-indigo-600/20"
+                  onClick={handleStartNewPreset}
+                  className="w-full py-4 border-2 border-dashed border-slate-700 rounded-2xl text-slate-400 hover:text-indigo-400 hover:border-indigo-600/40 transition-all flex items-center justify-center gap-2 font-medium"
                 >
-                  設定を保存して生成へ
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                  新規プリセットを作成
                 </button>
               </div>
-            </div>
+            )}
+
+            {/* プリセット編集フォーム */}
+            {isEditingPreset && (
+              <div className="space-y-12">
+                {/* プリセット名 */}
+                <div className="bg-slate-800/50 p-6 rounded-3xl border border-slate-700">
+                  <h4 className="text-lg font-bold mb-4 flex items-center gap-2">
+                    <div className="w-2 h-2 bg-emerald-500 rounded-full" />
+                    プリセット名
+                  </h4>
+                  <input
+                    type="text"
+                    value={editingPresetName}
+                    onChange={(e) => setEditingPresetName(e.target.value)}
+                    placeholder="例：メインブランド、サブブランドA..."
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-lg outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="bg-slate-800/50 p-8 rounded-3xl border border-slate-700">
+                    <h4 className="text-lg font-bold mb-6 flex items-center gap-2">
+                      <div className="w-2 h-2 bg-indigo-500 rounded-full" />
+                      メインカラー (HEX)
+                    </h4>
+                    <div className="flex items-center gap-6">
+                      <div className="w-20 h-20 rounded-2xl shadow-xl shadow-black/20 shrink-0 border-2 border-slate-700" style={{ backgroundColor: editingBrand.primaryColor }} />
+                      <div className="flex-1 space-y-4">
+                        <input
+                          type="text"
+                          value={editingBrand.primaryColor}
+                          onChange={(e) => setEditingBrand(prev => ({ ...prev, primaryColor: e.target.value }))}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-lg font-mono outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                        <div className="flex gap-2">
+                          {['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#000000', '#ffffff'].map(c => (
+                            <button
+                              key={c}
+                              onClick={() => setEditingBrand(prev => ({ ...prev, primaryColor: c }))}
+                              className="w-6 h-6 rounded-full border border-white/10"
+                              style={{ backgroundColor: c }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-800/50 p-8 rounded-3xl border border-slate-700">
+                    <h4 className="text-lg font-bold mb-6 flex items-center gap-2">
+                      <div className="w-2 h-2 bg-purple-500 rounded-full" />
+                      ロゴアップロード
+                    </h4>
+                    {editingBrand.logoUrl ? (
+                      <div className="space-y-4">
+                        <div className="relative border-2 border-slate-700 rounded-2xl h-32 flex items-center justify-center bg-slate-900/50">
+                          <img src={editingBrand.logoUrl} alt="Logo" className="max-h-24 max-w-full object-contain" />
+                          <button
+                            onClick={() => setEditingBrand(prev => ({ ...prev, logoUrl: '', extractedColors: undefined }))}
+                            className="absolute top-2 right-2 w-6 h-6 bg-red-600 hover:bg-red-500 rounded-full flex items-center justify-center text-white text-xs transition-colors"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        {editingBrand.extractedColors && (
+                          <div className="space-y-2">
+                            <p className="text-xs text-slate-500 uppercase tracking-widest font-bold">ロゴから抽出されたカラー</p>
+                            <div className="flex gap-2">
+                              {editingBrand.extractedColors.palette.map((color, i) => (
+                                <button
+                                  key={i}
+                                  onClick={() => setEditingBrand(prev => ({ ...prev, primaryColor: color }))}
+                                  className="w-8 h-8 rounded-lg border border-slate-600 hover:scale-110 transition-transform"
+                                  style={{ backgroundColor: color }}
+                                  title={color}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <label className="border-2 border-dashed border-slate-700 rounded-2xl h-32 flex flex-col items-center justify-center hover:bg-slate-700/50 transition-colors cursor-pointer group">
+                        <svg className="w-8 h-8 text-slate-500 mb-2 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0l-4-4m4 4v12" /></svg>
+                        <p className="text-xs text-slate-500">透過PNG推奨</p>
+                        <input
+                          type="file"
+                          accept="image/png,image/svg+xml,image/jpeg,image/webp"
+                          className="hidden"
+                          onChange={handleEditingLogoUpload}
+                        />
+                      </label>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-slate-800/50 p-8 rounded-3xl border border-slate-700">
+                  <h4 className="text-lg font-bold mb-6">定型フォント指示</h4>
+                  <div className="space-y-6">
+                    <div className="flex flex-wrap gap-4">
+                      {Object.keys(FONT_MAP).map(label => (
+                        <button
+                          key={label}
+                          onClick={() => setEditingBrand(prev => ({ ...prev, fontPreference: label }))}
+                          className={`px-6 py-3 rounded-2xl border text-sm transition-all ${editingBrand.fontPreference === label ? 'bg-white text-slate-900 font-bold border-white' : 'bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500'}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="p-6 bg-slate-900 rounded-2xl">
+                      <p className="text-slate-500 text-xs mb-4 uppercase tracking-widest font-bold">Preview Text</p>
+                      {(() => {
+                        const current = FONT_MAP[editingBrand.fontPreference] || DEFAULT_FONT;
+                        return (
+                          <p className="text-4xl" style={{ fontFamily: current.family, fontWeight: current.weight }}>
+                            The quick brown fox jumps over the lazy dog.
+                          </p>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-4">
+                  <button
+                    onClick={() => setIsEditingPreset(false)}
+                    className="px-8 py-3 rounded-2xl bg-slate-800 text-white font-bold hover:bg-slate-700 transition-colors"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={handleSavePreset}
+                    className="px-10 py-3 rounded-2xl bg-indigo-600 text-white font-bold hover:bg-indigo-500 transition-all shadow-xl shadow-indigo-600/20"
+                  >
+                    {editingPresetId ? 'プリセットを保存' : 'プリセットを作成'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           /* Gallery Tab */

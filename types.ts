@@ -10,6 +10,15 @@ export interface BrandConfig {
   fontPreference: string;
   extractedColors?: ExtractedColors;
   useLogoColors: boolean;
+  useLogoOverlay: boolean;
+}
+
+export interface BrandPreset {
+  id: string;
+  name: string;
+  config: BrandConfig;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export type LayoutType =
