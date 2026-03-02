@@ -11,7 +11,7 @@ import { GeneratingOverlay } from './components/GeneratingOverlay';
 import { TemplateGallery } from './components/TemplateGallery';
 import { SavedGallery } from './components/SavedGallery';
 import { ErrorToast, ToastMessage } from './components/ErrorToast';
-import { downloadImage, downloadAllImages, flattenImageForDownload } from './utils/imageDownload';
+import { downloadImage, flattenImageForDownload } from './utils/imageDownload';
 import { saveActivePresetId, loadActivePresetId, migrateOldBrandConfig } from './utils/storage';
 import { loadBrandPresetsFromDB, saveBrandPresetToDB, updateBrandPresetInDB, deleteBrandPresetFromDB, migrateBrandPresetsToSupabase } from './utils/brandPresetStorage';
 import { loadAllTemplates } from './utils/templateStorage';
@@ -401,7 +401,27 @@ const App: React.FC = () => {
 
     try {
       showToast('すべての画像をダウンロードしています...', 'info');
-      await downloadAllImages(generatedImages);
+      for (let i = 0; i < generatedImages.length; i++) {
+        const image = generatedImages[i];
+        const hasOverlays = image.settings.logoOverlay?.visible ||
+          image.settings.textOverlay?.textVisible ||
+          image.settings.brandOverlay ||
+          image.settings.blur > 0 ||
+          image.settings.brightness !== 100;
+
+        let downloadUrl = image.url;
+        if (hasOverlays) {
+          downloadUrl = await flattenImageForDownload(image, brand, FONT_MAP, DEFAULT_FONT);
+        }
+
+        const slideNum = image.slideNumber ?? i + 1;
+        const filename = `story-background-slide-${slideNum}.png`;
+        await downloadImage(downloadUrl, filename);
+
+        if (i < generatedImages.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
       showToast(`${generatedImages.length}枚の画像をダウンロードしました。`, 'success');
     } catch (error) {
       console.error('一括ダウンロードエラー:', error);
@@ -754,7 +774,33 @@ const App: React.FC = () => {
                           onClick={() => setSelectedImageId(img.id)}
                           className={`relative instagram-aspect w-32 md:w-full max-w-[240px] mx-auto rounded-3xl overflow-hidden cursor-pointer transition-all border-2 ${selectedImageId === img.id ? 'border-indigo-500 ring-4 ring-indigo-500/20' : 'border-slate-800 hover:border-slate-600'}`}
                         >
-                          <img src={img.url} className="w-full h-full object-cover" />
+                          <img
+                            src={img.url}
+                            className="w-full h-full object-cover"
+                            style={{
+                              filter: `blur(${img.settings.blur}px) brightness(${img.settings.brightness}%)`,
+                            }}
+                          />
+                          {img.settings.brandOverlay && (
+                            <div className="absolute inset-0 pointer-events-none mix-blend-overlay opacity-30" style={{ backgroundColor: brand.primaryColor }} />
+                          )}
+                          {img.settings.textOverlay && (
+                            <TextOverlay textOverlay={img.settings.textOverlay} fontPreference={brand.fontPreference} />
+                          )}
+                          {img.settings.logoOverlay?.visible && brand.logoUrl && (
+                            <div
+                              className="absolute pointer-events-none"
+                              style={{
+                                left: `${img.settings.logoOverlay.x}%`,
+                                top: `${img.settings.logoOverlay.y}%`,
+                                transform: 'translate(-50%, -50%)',
+                                width: `${Math.max(8, img.settings.logoOverlay.scale * 30)}%`,
+                                zIndex: 25,
+                              }}
+                            >
+                              <img src={brand.logoUrl} alt="" style={{ width: '100%', height: 'auto', objectFit: 'contain', filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.5))' }} draggable={false} />
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
