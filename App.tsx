@@ -124,6 +124,18 @@ const App: React.FC = () => {
 
   // プリセット選択ハンドラ
   const handleSelectPreset = (presetId: string) => {
+    if (!presetId) {
+      setActivePresetId(null);
+      saveActivePresetId(null);
+      setBrand({
+        logoUrl: '',
+        primaryColor: '#6366f1',
+        fontPreference: 'Noto Sans JP Bold',
+        useLogoColors: false,
+        useLogoOverlay: false,
+      });
+      return;
+    }
     const preset = brandPresets.find(p => p.id === presetId);
     if (preset) {
       setActivePresetId(preset.id);
@@ -468,22 +480,17 @@ const App: React.FC = () => {
                 {/* プリセット選択 */}
                 <div className="bg-slate-800/30 p-4 rounded-2xl border border-slate-700/50">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 block">使用ブランド</label>
-                  {brandPresets.length > 0 ? (
-                    <select
-                      value={activePresetId || ''}
-                      onChange={(e) => handleSelectPreset(e.target.value)}
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm font-medium text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 appearance-none cursor-pointer"
-                      style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '20px' }}
-                    >
-                      {brandPresets.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <p className="text-sm text-slate-500">
-                      <button onClick={() => setActiveTab('brand')} className="text-indigo-400 hover:underline">ブランドプリセットタブ</button>で設定してください
-                    </p>
-                  )}
+                  <select
+                    value={activePresetId || ''}
+                    onChange={(e) => handleSelectPreset(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm font-medium text-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 appearance-none cursor-pointer"
+                    style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: '20px' }}
+                  >
+                    <option value="">使用しない</option>
+                    {brandPresets.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="bg-slate-800/30 p-6 rounded-3xl border border-slate-700/50 backdrop-blur-sm mb-8">
