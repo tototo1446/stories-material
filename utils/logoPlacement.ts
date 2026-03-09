@@ -16,3 +16,18 @@ const DEFAULT_POSITION: LogoPosition = { x: 50, y: 85, scale: 1.0 };
 export function getLogoPositionForLayout(layout: LayoutType): LogoPosition {
   return LAYOUT_LOGO_POSITIONS[layout] ?? DEFAULT_POSITION;
 }
+
+// テンプレート画像パターンごとのロゴ配置
+// 人物/商品の位置を避けて配置する
+const TEMPLATE_PATTERN_LOGO_POSITIONS: LogoPosition[] = [
+  // Pattern 0: 人物/商品が左側(~40%) → ロゴは右上
+  { x: 88, y: 8, scale: 0.7 },
+  // Pattern 1: 人物/商品が下半分 → ロゴは左上
+  { x: 12, y: 8, scale: 0.7 },
+  // Pattern 2: 人物/商品が右側 → ロゴは左上
+  { x: 12, y: 8, scale: 0.7 },
+];
+
+export function getLogoPositionForTemplatePattern(patternIndex: number): LogoPosition {
+  return TEMPLATE_PATTERN_LOGO_POSITIONS[patternIndex] ?? DEFAULT_POSITION;
+}

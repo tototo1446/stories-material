@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { TemplateImage } from '../types';
 import { saveTemplate, deleteTemplate } from '../utils/templateStorage';
+import { removeBackground } from '../utils/backgroundRemoval';
 
 interface TemplateGalleryProps {
   templates: TemplateImage[];
@@ -18,25 +19,45 @@ export const TemplateGallery: React.FC<TemplateGalleryProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [showManage, setShowManage] = useState(false);
+  const [bgRemovalStatus, setBgRemovalStatus] = useState<{
+    current: number;
+    total: number;
+    message: string;
+    progress: number;
+  } | null>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     setIsUploading(true);
+    const total = files.length;
     const newTemplates: TemplateImage[] = [];
 
-    for (let i = 0; i < files.length; i++) {
+    for (let i = 0; i < total; i++) {
       const file = files[i];
       try {
+        // 背景透過処理
+        let processedFile = file;
+        try {
+          setBgRemovalStatus({ current: i + 1, total, message: '背景を透過中...', progress: 0 });
+          processedFile = await removeBackground(file, (p) => {
+            setBgRemovalStatus({ current: i + 1, total, message: p.message, progress: p.progress });
+          });
+        } catch (bgErr) {
+          console.warn('背景透過に失敗、元画像を使用:', bgErr);
+          // フォールバック: 元画像をそのまま使用
+        }
+
         const name = file.name.replace(/\.[^.]+$/, '');
-        const template = await saveTemplate(file, name);
+        const template = await saveTemplate(processedFile, name);
         newTemplates.push(template);
       } catch (err) {
         console.error('テンプレートのアップロードに失敗:', err);
       }
     }
 
+    setBgRemovalStatus(null);
     if (newTemplates.length > 0) {
       onTemplatesChange([...newTemplates, ...templates]);
     }
@@ -72,6 +93,22 @@ export const TemplateGallery: React.FC<TemplateGalleryProps> = ({
           </button>
         )}
       </div>
+
+      {/* 背景透過処理の進捗バナー */}
+      {bgRemovalStatus && (
+        <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-4 py-3 space-y-2">
+          <div className="flex items-center justify-between text-xs text-indigo-300">
+            <span>{bgRemovalStatus.message}</span>
+            <span>{bgRemovalStatus.current}/{bgRemovalStatus.total}枚</span>
+          </div>
+          <div className="w-full h-1.5 bg-indigo-900/50 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-indigo-400 rounded-full transition-all duration-300"
+              style={{ width: `${Math.round(bgRemovalStatus.progress * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* 横スクロールギャラリー */}
       <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">

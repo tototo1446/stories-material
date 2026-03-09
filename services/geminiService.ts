@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import { GeneratedImage, LayoutType } from '../types';
-import { getLogoPositionForLayout } from '../utils/logoPlacement';
+import { getLogoPositionForLayout, getLogoPositionForTemplatePattern } from '../utils/logoPlacement';
 
 // --- Public Types ---
 
@@ -437,7 +437,7 @@ export const generateStoryBackgrounds = async (
               },
               logoOverlay: {
                 visible: false,
-                ...getLogoPositionForLayout('center_focus'),
+                ...getLogoPositionForTemplatePattern(i),
               },
             },
           });

@@ -6,6 +6,7 @@ import { getSupabase } from '../lib/supabase';
 // ----------------------------------------------------------------
 
 export function generateThumbnail(file: File, maxWidth = 300): Promise<Blob> {
+  const isPng = file.type === 'image/png';
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -15,6 +16,7 @@ export function generateThumbnail(file: File, maxWidth = 300): Promise<Blob> {
       canvas.width = maxWidth;
       canvas.height = img.height * scale;
       const ctx = canvas.getContext('2d')!;
+      // PNG（透過画像）の場合は背景を塗らずそのまま描画
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
       canvas.toBlob(
@@ -22,8 +24,8 @@ export function generateThumbnail(file: File, maxWidth = 300): Promise<Blob> {
           if (blob) resolve(blob);
           else reject(new Error('サムネイル生成に失敗しました'));
         },
-        'image/jpeg',
-        0.7,
+        isPng ? 'image/png' : 'image/jpeg',
+        isPng ? undefined : 0.7,
       );
     };
     img.onerror = () => {
@@ -85,10 +87,14 @@ export async function saveTemplate(file: File, name: string): Promise<TemplateIm
   const imageUrl = await uploadToBlob(file, filename);
 
   // 2. サムネイルを生成してアップロード
+  const isPng = file.type === 'image/png';
   const thumbBlob = await generateThumbnail(file);
+  const thumbFilename = isPng
+    ? `thumb_${filename.replace(/\.[^.]+$/, '.png')}`
+    : `thumb_${filename}`;
   const thumbnailUrl = await uploadToBlob(
-    new File([thumbBlob], `thumb_${filename}`, { type: 'image/jpeg' }),
-    `thumb_${filename}`,
+    new File([thumbBlob], thumbFilename, { type: isPng ? 'image/png' : 'image/jpeg' }),
+    thumbFilename,
   );
 
   // 3. DB にメタデータを保存
