@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { BrandConfig, BrandPreset, GeneratedImage, SavedImage, TemplateImage } from './types';
 import { SAMPLE_SCRIPTS, FONT_MAP, DEFAULT_FONT } from './constants';
 import { generateStoryBackgrounds } from './services/imageGenerationService';
-import { EditPalette } from './components/EditPalette';
 import { InstagramOverlay } from './components/InstagramOverlay';
 import { TextOverlay } from './components/TextOverlay';
 import { LogoOverlay } from './components/LogoOverlay';
@@ -22,6 +21,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'brand' | 'gallery'>('dashboard');
   const [message, setMessage] = useState('');
   const [atmosphereNote, setAtmosphereNote] = useState('');
+  const [logoScale, setLogoScale] = useState(0.7);
   const [brand, setBrand] = useState<BrandConfig>({
     logoUrl: '',
     primaryColor: '#6366f1',
@@ -328,13 +328,13 @@ const App: React.FC = () => {
       if (newImages.length === 0) {
         showToast('画像が生成されませんでした。もう一度お試しください。', 'error');
       } else {
-        // ロゴ画像挿入がONなら、生成画像のlogoOverlay.visibleを自動有効化
+        // ロゴ画像挿入がONなら、生成画像のlogoOverlay.visibleを自動有効化＋スケール反映
         const finalImages = brand.useLogoOverlay
           ? newImages.map(img => ({
               ...img,
               settings: {
                 ...img.settings,
-                logoOverlay: { ...img.settings.logoOverlay, visible: true },
+                logoOverlay: { ...img.settings.logoOverlay, visible: true, scale: logoScale },
               },
             }))
           : newImages;
@@ -616,7 +616,7 @@ const App: React.FC = () => {
                       )}
 
                       {/* ロゴ画像挿入 */}
-                      <div className="pt-3 border-t border-slate-700/50">
+                      <div className="pt-3 border-t border-slate-700/50 space-y-4">
                         <div className="flex items-center justify-between">
                           <div>
                             <label className="text-sm font-medium text-slate-300">ロゴ画像挿入</label>
@@ -629,6 +629,24 @@ const App: React.FC = () => {
                             <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${brand.useLogoOverlay ? 'translate-x-7' : 'translate-x-1'}`} />
                           </button>
                         </div>
+
+                        {brand.useLogoOverlay && (
+                          <div className="space-y-3">
+                            <div className="flex justify-between">
+                              <label className="text-sm font-medium text-slate-300">ロゴサイズ</label>
+                              <span className="text-xs text-slate-400 font-mono">{Math.round(logoScale * 100)}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="10"
+                              max="200"
+                              step="5"
+                              value={Math.round(logoScale * 100)}
+                              onChange={(e) => setLogoScale(parseInt(e.target.value) / 100)}
+                              className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -664,13 +682,6 @@ const App: React.FC = () => {
                   </button>
                 </div>
 
-                {selectedImage && (
-                  <EditPalette
-                    image={selectedImage}
-                    onUpdate={(updates) => updateImageSettings(selectedImage.id, updates)}
-                    brand={brand}
-                  />
-                )}
               </div>
 
               {/* Preview Column */}
