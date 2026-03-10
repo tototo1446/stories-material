@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { LogoOverlaySettings } from '../types';
 
 interface LogoOverlayProps {
@@ -9,6 +9,18 @@ interface LogoOverlayProps {
   interactive: boolean;
 }
 
+// ダウンロードと同じ計算: naturalWidth * scale (上限 targetWidth * 0.4)
+// プレビューでは targetWidth=1080 を基準にコンテナ幅との比率で % に変換
+const TARGET_WIDTH = 1080;
+const MAX_LOGO_RATIO = 0.4; // 40%
+
+function calcLogoWidthPct(naturalWidth: number, scale: number): number {
+  let logoW = naturalWidth * scale;
+  const maxW = TARGET_WIDTH * MAX_LOGO_RATIO;
+  if (logoW > maxW) logoW = maxW;
+  return (logoW / TARGET_WIDTH) * 100;
+}
+
 export const LogoOverlay: React.FC<LogoOverlayProps> = ({
   logoUrl,
   settings,
@@ -17,9 +29,29 @@ export const LogoOverlay: React.FC<LogoOverlayProps> = ({
   interactive,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const [naturalW, setNaturalW] = useState(0);
+  const [naturalH, setNaturalH] = useState(0);
   const dragOffset = useRef<{ offsetX: number; offsetY: number }>({ offsetX: 0, offsetY: 0 });
 
-  if (!settings.visible) return null;
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => {
+      setNaturalW(img.naturalWidth);
+      setNaturalH(img.naturalHeight);
+    };
+    img.src = logoUrl;
+  }, [logoUrl]);
+
+  if (!settings.visible || naturalW === 0) return null;
+
+  const logoWidthPct = calcLogoWidthPct(naturalW, settings.scale);
+  const aspectRatio = naturalH / naturalW;
+  const logoHeightPct = logoWidthPct * aspectRatio;
+  const halfW = logoWidthPct / 2;
+  const halfH = logoHeightPct / 2;
+
+  const clampedX = Math.max(halfW, Math.min(100 - halfW, settings.x));
+  const clampedY = Math.max(halfH, Math.min(100 - halfH, settings.y));
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (!interactive || !containerRef.current) return;
@@ -42,25 +74,15 @@ export const LogoOverlay: React.FC<LogoOverlayProps> = ({
     const rect = containerRef.current.getBoundingClientRect();
     const rawX = ((e.clientX - rect.left - dragOffset.current.offsetX) / rect.width) * 100;
     const rawY = ((e.clientY - rect.top - dragOffset.current.offsetY) / rect.height) * 100;
-    const wPct = Math.max(8, settings.scale * 30);
-    const hW = wPct / 2;
-    const hH = hW * 0.6;
     onSettingsChange({
-      x: Math.max(hW, Math.min(100 - hW, rawX)),
-      y: Math.max(hH, Math.min(100 - hH, rawY)),
+      x: Math.max(halfW, Math.min(100 - halfW, rawX)),
+      y: Math.max(halfH, Math.min(100 - halfH, rawY)),
     });
   };
 
   const handlePointerUp = () => {
     setIsDragging(false);
   };
-
-  const logoWidthPct = Math.max(8, settings.scale * 30);
-  const halfW = logoWidthPct / 2;
-  // ロゴのアスペクト比が不明なので、高さ方向は幅の半分程度と見積もる
-  const halfH = halfW * 0.6;
-  const clampedX = Math.max(halfW, Math.min(100 - halfW, settings.x));
-  const clampedY = Math.max(halfH, Math.min(100 - halfH, settings.y));
 
   return (
     <div
