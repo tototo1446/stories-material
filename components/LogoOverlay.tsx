@@ -40,11 +40,14 @@ export const LogoOverlay: React.FC<LogoOverlayProps> = ({
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!isDragging || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const x = ((e.clientX - rect.left - dragOffset.current.offsetX) / rect.width) * 100;
-    const y = ((e.clientY - rect.top - dragOffset.current.offsetY) / rect.height) * 100;
+    const rawX = ((e.clientX - rect.left - dragOffset.current.offsetX) / rect.width) * 100;
+    const rawY = ((e.clientY - rect.top - dragOffset.current.offsetY) / rect.height) * 100;
+    const wPct = Math.max(8, settings.scale * 30);
+    const hW = wPct / 2;
+    const hH = hW * 0.6;
     onSettingsChange({
-      x: Math.max(0, Math.min(100, x)),
-      y: Math.max(0, Math.min(100, y)),
+      x: Math.max(hW, Math.min(100 - hW, rawX)),
+      y: Math.max(hH, Math.min(100 - hH, rawY)),
     });
   };
 
@@ -52,7 +55,12 @@ export const LogoOverlay: React.FC<LogoOverlayProps> = ({
     setIsDragging(false);
   };
 
-  const logoWidth = `${Math.max(8, settings.scale * 30)}%`;
+  const logoWidthPct = Math.max(8, settings.scale * 30);
+  const halfW = logoWidthPct / 2;
+  // ロゴのアスペクト比が不明なので、高さ方向は幅の半分程度と見積もる
+  const halfH = halfW * 0.6;
+  const clampedX = Math.max(halfW, Math.min(100 - halfW, settings.x));
+  const clampedY = Math.max(halfH, Math.min(100 - halfH, settings.y));
 
   return (
     <div
@@ -61,10 +69,10 @@ export const LogoOverlay: React.FC<LogoOverlayProps> = ({
       onPointerUp={handlePointerUp}
       style={{
         position: 'absolute',
-        left: `${settings.x}%`,
-        top: `${settings.y}%`,
+        left: `${clampedX}%`,
+        top: `${clampedY}%`,
         transform: 'translate(-50%, -50%)',
-        width: logoWidth,
+        width: `${logoWidthPct}%`,
         zIndex: 25,
         cursor: interactive ? (isDragging ? 'grabbing' : 'grab') : 'default',
         pointerEvents: interactive ? 'auto' : 'none',

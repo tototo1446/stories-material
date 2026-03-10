@@ -163,8 +163,13 @@ export async function flattenImageForDownload(
       logoW *= ratio;
       logoH *= ratio;
     }
-    const x = (image.settings.logoOverlay.x / 100) * targetWidth - logoW / 2;
-    const y = (image.settings.logoOverlay.y / 100) * targetHeight - logoH / 2;
+    // ロゴが見切れないように位置をクランプ
+    const halfW = logoW / 2;
+    const halfH = logoH / 2;
+    const rawX = (image.settings.logoOverlay.x / 100) * targetWidth;
+    const rawY = (image.settings.logoOverlay.y / 100) * targetHeight;
+    const x = Math.max(halfW, Math.min(targetWidth - halfW, rawX)) - halfW;
+    const y = Math.max(halfH, Math.min(targetHeight - halfH, rawY)) - halfH;
     ctx.drawImage(logoImg, x, y, logoW, logoH);
   }
 
