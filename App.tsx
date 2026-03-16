@@ -16,6 +16,8 @@ import { loadBrandPresetsFromDB, saveBrandPresetToDB, updateBrandPresetInDB, del
 import { loadAllTemplates } from './utils/templateStorage';
 import { extractColorsFromImage } from './utils/colorExtraction';
 import { saveGeneratedImage, loadSavedImages } from './utils/generatedImageStorage';
+import { inpaintImage } from './utils/inpainting';
+import { InpaintingCanvas } from './components/InpaintingCanvas';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'brand' | 'gallery'>('dashboard');
@@ -54,6 +56,9 @@ const App: React.FC = () => {
   const [currentSlide, setCurrentSlide] = useState<{ current: number; total: number } | null>(null);
   const [templates, setTemplates] = useState<TemplateImage[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+
+  const [isInpaintingMode, setIsInpaintingMode] = useState(false);
+  const [isInpainting, setIsInpainting] = useState(false);
 
   const previewContainerRef = useRef<HTMLDivElement>(null);
 
@@ -442,6 +447,27 @@ const App: React.FC = () => {
     setAtmosphereNote(sample.atmosphereNote);
   };
 
+  const handleInpaintApply = async (maskDataUrl: string, instruction: string) => {
+    if (!selectedImage) return;
+    setIsInpainting(true);
+    try {
+      const resultDataUrl = await inpaintImage(selectedImage.url, maskDataUrl, instruction);
+      setGeneratedImages(prev =>
+        prev.map(img =>
+          img.id === selectedImage.id ? { ...img, url: resultDataUrl } : img
+        )
+      );
+      setIsInpaintingMode(false);
+      showToast('画像の一部を修正しました。', 'success');
+    } catch (error) {
+      console.error('インペインティングエラー:', error);
+      const msg = error instanceof Error ? error.message : '画像の修正に失敗しました。';
+      showToast(msg, 'error');
+    } finally {
+      setIsInpainting(false);
+    }
+  };
+
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -706,73 +732,91 @@ const App: React.FC = () => {
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
                     {/* Active Preview */}
                     <div className="relative group">
-                      <div ref={previewContainerRef} className="instagram-aspect rounded-[40px] overflow-hidden bg-slate-900 border-4 border-slate-800 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] relative">
-                        {/* Layer 1: Filtered background */}
-                        <div
-                          className="absolute inset-0"
-                          style={{
-                            filter: `blur(${selectedImage?.settings.blur || 0}px) brightness(${selectedImage?.settings.brightness || 100}%)`,
-                          }}
-                        >
-                          {selectedImage ? (
-                            <>
-                              <img src={selectedImage.url} alt="Preview" className="w-full h-full object-cover" />
-                              {selectedImage.settings.brandOverlay && (
-                                <div className="absolute inset-0 pointer-events-none mix-blend-overlay opacity-30" style={{ backgroundColor: brand.primaryColor }} />
+                      {isInpaintingMode && selectedImage ? (
+                        <InpaintingCanvas
+                          imageUrl={selectedImage.url}
+                          onApply={handleInpaintApply}
+                          onCancel={() => setIsInpaintingMode(false)}
+                          disabled={isInpainting}
+                        />
+                      ) : (
+                        <>
+                          <div ref={previewContainerRef} className="instagram-aspect rounded-[40px] overflow-hidden bg-slate-900 border-4 border-slate-800 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] relative">
+                            {/* Layer 1: Filtered background */}
+                            <div
+                              className="absolute inset-0"
+                              style={{
+                                filter: `blur(${selectedImage?.settings.blur || 0}px) brightness(${selectedImage?.settings.brightness || 100}%)`,
+                              }}
+                            >
+                              {selectedImage ? (
+                                <>
+                                  <img src={selectedImage.url} alt="Preview" className="w-full h-full object-cover" />
+                                  {selectedImage.settings.brandOverlay && (
+                                    <div className="absolute inset-0 pointer-events-none mix-blend-overlay opacity-30" style={{ backgroundColor: brand.primaryColor }} />
+                                  )}
+                                </>
+                              ) : (
+                                <div className="w-full h-full flex flex-col items-center justify-center p-12 text-center text-slate-500">
+                                  <svg className="w-16 h-16 mb-4 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                  <p className="text-sm">画像が生成されるとここに表示されます</p>
+                                </div>
                               )}
-                            </>
-                          ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center p-12 text-center text-slate-500">
-                              <svg className="w-16 h-16 mb-4 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                              <p className="text-sm">画像が生成されるとここに表示されます</p>
+                            </div>
+
+                            {/* Layer 2: Text overlay (unfiltered) */}
+                            {selectedImage?.settings.textOverlay && (
+                              <TextOverlay
+                                textOverlay={selectedImage.settings.textOverlay}
+                                fontPreference={brand.fontPreference}
+                              />
+                            )}
+
+                            {/* Layer 2.5: Logo overlay (draggable) */}
+                            {selectedImage?.settings.logoOverlay?.visible && brand.logoUrl && (
+                              <LogoOverlay
+                                logoUrl={brand.logoUrl}
+                                settings={selectedImage.settings.logoOverlay}
+                                onSettingsChange={(updates) => updateImageSettings(selectedImage.id, {
+                                  logoOverlay: { ...selectedImage.settings.logoOverlay, ...updates },
+                                })}
+                                containerRef={previewContainerRef}
+                                interactive={true}
+                              />
+                            )}
+
+                            {/* Layer 3: Instagram guide (unfiltered) */}
+                            {showOverlay && <InstagramOverlay />}
+                          </div>
+
+                          {selectedImage && (
+                            <div className="mt-6 flex gap-4">
+                              <button
+                                onClick={() => handleDownloadImage(selectedImage)}
+                                className="flex-1 py-4 bg-white text-slate-900 font-bold rounded-2xl hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"
+                              >
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                                背景を保存
+                              </button>
+                              <button
+                                onClick={() => setIsInpaintingMode(true)}
+                                className="px-6 py-4 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-2xl transition-colors flex items-center justify-center gap-2"
+                              >
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                一部を修正
+                              </button>
+                              {generatedImages.length > 1 && (
+                                <button
+                                  onClick={handleDownloadAll}
+                                  className="px-6 py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-500 transition-colors flex items-center justify-center gap-2"
+                                >
+                                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                                  すべて保存
+                                </button>
+                              )}
                             </div>
                           )}
-                        </div>
-
-                        {/* Layer 2: Text overlay (unfiltered) */}
-                        {selectedImage?.settings.textOverlay && (
-                          <TextOverlay
-                            textOverlay={selectedImage.settings.textOverlay}
-                            fontPreference={brand.fontPreference}
-                          />
-                        )}
-
-                        {/* Layer 2.5: Logo overlay (draggable) */}
-                        {selectedImage?.settings.logoOverlay?.visible && brand.logoUrl && (
-                          <LogoOverlay
-                            logoUrl={brand.logoUrl}
-                            settings={selectedImage.settings.logoOverlay}
-                            onSettingsChange={(updates) => updateImageSettings(selectedImage.id, {
-                              logoOverlay: { ...selectedImage.settings.logoOverlay, ...updates },
-                            })}
-                            containerRef={previewContainerRef}
-                            interactive={true}
-                          />
-                        )}
-
-                        {/* Layer 3: Instagram guide (unfiltered) */}
-                        {showOverlay && <InstagramOverlay />}
-                      </div>
-
-                      {selectedImage && (
-                        <div className="mt-6 flex gap-4">
-                          <button
-                            onClick={() => handleDownloadImage(selectedImage)}
-                            className="flex-1 py-4 bg-white text-slate-900 font-bold rounded-2xl hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"
-                          >
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                            背景を保存
-                          </button>
-                          {generatedImages.length > 1 && (
-                            <button
-                              onClick={handleDownloadAll}
-                              className="px-6 py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-500 transition-colors flex items-center justify-center gap-2"
-                            >
-                              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                              すべて保存
-                            </button>
-                          )}
-                        </div>
+                        </>
                       )}
                     </div>
 
