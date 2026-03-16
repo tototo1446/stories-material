@@ -76,3 +76,11 @@ export interface TemplateImage {
   thumbnailUrl: string;
   createdAt: number;
 }
+
+export interface ReferenceStory {
+  id: string;
+  name: string;
+  dataUrl: string;
+  thumbnailUrl: string;
+  createdAt: number;
+}

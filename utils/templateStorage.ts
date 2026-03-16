@@ -40,7 +40,7 @@ export function generateThumbnail(file: File, maxWidth = 300): Promise<Blob> {
 // Vercel Blob アップロード（API Route 経由）
 // ----------------------------------------------------------------
 
-async function uploadToBlob(file: File | Blob, filename: string): Promise<string> {
+export async function uploadToBlob(file: File | Blob, filename: string): Promise<string> {
   const res = await fetch(`/api/template-upload?filename=${encodeURIComponent(filename)}`, {
     method: 'POST',
     body: file,
@@ -55,7 +55,7 @@ async function uploadToBlob(file: File | Blob, filename: string): Promise<string
   return url;
 }
 
-async function deleteFromBlob(urls: string[]): Promise<void> {
+export async function deleteFromBlob(urls: string[]): Promise<void> {
   const res = await fetch('/api/template-delete', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -71,7 +71,7 @@ async function deleteFromBlob(urls: string[]): Promise<void> {
 // テンプレート CRUD（Vercel Blob + Supabase DB）
 // ----------------------------------------------------------------
 
-function uniqueFilename(originalName: string): string {
+export function uniqueFilename(originalName: string): string {
   const ext = originalName.split('.').pop() || 'jpg';
   const base = originalName.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
   return `${base}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.${ext}`;

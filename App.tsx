@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { BrandConfig, BrandPreset, GeneratedImage, SavedImage, TemplateImage } from './types';
+import { BrandConfig, BrandPreset, GeneratedImage, SavedImage, TemplateImage, ReferenceStory } from './types';
 import { SAMPLE_SCRIPTS, FONT_MAP, DEFAULT_FONT } from './constants';
 import { generateStoryBackgrounds } from './services/imageGenerationService';
 import { InstagramOverlay } from './components/InstagramOverlay';
@@ -8,12 +8,14 @@ import { TextOverlay } from './components/TextOverlay';
 import { LogoOverlay } from './components/LogoOverlay';
 import { GeneratingOverlay } from './components/GeneratingOverlay';
 import { TemplateGallery } from './components/TemplateGallery';
+import { ReferenceStoryGallery } from './components/ReferenceStoryGallery';
 import { SavedGallery } from './components/SavedGallery';
 import { ErrorToast, ToastMessage } from './components/ErrorToast';
 import { downloadImage, flattenImageForDownload } from './utils/imageDownload';
 import { saveActivePresetId, loadActivePresetId, migrateOldBrandConfig } from './utils/storage';
 import { loadBrandPresetsFromDB, saveBrandPresetToDB, updateBrandPresetInDB, deleteBrandPresetFromDB, migrateBrandPresetsToSupabase } from './utils/brandPresetStorage';
 import { loadAllTemplates } from './utils/templateStorage';
+import { loadAllReferenceStories } from './utils/referenceStoryStorage';
 import { extractColorsFromImage } from './utils/colorExtraction';
 import { saveGeneratedImage, loadSavedImages } from './utils/generatedImageStorage';
 import { inpaintImage } from './utils/inpainting';
@@ -56,6 +58,8 @@ const App: React.FC = () => {
   const [currentSlide, setCurrentSlide] = useState<{ current: number; total: number } | null>(null);
   const [templates, setTemplates] = useState<TemplateImage[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [referenceStories, setReferenceStories] = useState<ReferenceStory[]>([]);
+  const [selectedReferenceId, setSelectedReferenceId] = useState<string | null>(null);
 
   const [isInpaintingMode, setIsInpaintingMode] = useState(false);
   const [isInpainting, setIsInpainting] = useState(false);
@@ -134,6 +138,13 @@ const App: React.FC = () => {
   useEffect(() => {
     loadAllTemplates()
       .then(setTemplates)
+      .catch(console.error);
+  }, []);
+
+  // 参考ストーリーズの読み込み
+  useEffect(() => {
+    loadAllReferenceStories()
+      .then(setReferenceStories)
       .catch(console.error);
   }, []);
 
@@ -293,6 +304,19 @@ const App: React.FC = () => {
   };
 
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+  const selectedReference = referenceStories.find(s => s.id === selectedReferenceId);
+
+  // 排他選択: テンプレート選択時は参考ストーリーズをクリア
+  const handleSelectTemplate = (id: string | null) => {
+    setSelectedTemplateId(id);
+    if (id) setSelectedReferenceId(null);
+  };
+
+  // 排他選択: 参考ストーリーズ選択時はテンプレートをクリア
+  const handleSelectReference = (id: string | null) => {
+    setSelectedReferenceId(id);
+    if (id) setSelectedTemplateId(null);
+  };
 
   const showToast = (message: string, type: 'success' | 'error' | 'info', duration?: number) => {
     setToast({ id: Date.now().toString(), message, type, duration });
@@ -327,7 +351,8 @@ const App: React.FC = () => {
           },
         },
         selectedTemplate?.dataUrl,
-        logoPalette
+        logoPalette,
+        selectedReference?.dataUrl
       );
 
       if (newImages.length === 0) {
@@ -570,8 +595,17 @@ const App: React.FC = () => {
                   <TemplateGallery
                     templates={templates}
                     selectedTemplateId={selectedTemplateId}
-                    onSelect={setSelectedTemplateId}
+                    onSelect={handleSelectTemplate}
                     onTemplatesChange={setTemplates}
+                  />
+                </div>
+
+                <div className="bg-slate-800/30 p-6 rounded-3xl border border-slate-700/50 backdrop-blur-sm mb-8">
+                  <ReferenceStoryGallery
+                    referenceStories={referenceStories}
+                    selectedReferenceId={selectedReferenceId}
+                    onSelect={handleSelectReference}
+                    onReferenceStoriesChange={setReferenceStories}
                   />
                 </div>
 
@@ -680,7 +714,7 @@ const App: React.FC = () => {
                   <button
                     onClick={handleGenerate}
                     disabled={isGenerating || !message}
-                    className={`w-full py-4 ${selectedTemplate ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-600/20' : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/20'} disabled:bg-slate-700 disabled:opacity-50 text-white font-bold rounded-2xl transition-all shadow-xl flex items-center justify-center gap-2 group`}
+                    className={`w-full py-4 ${selectedReference ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/20' : selectedTemplate ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-600/20' : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/20'} disabled:bg-slate-700 disabled:opacity-50 text-white font-bold rounded-2xl transition-all shadow-xl flex items-center justify-center gap-2 group`}
                   >
                     {isGenerating ? (
                       <>
@@ -689,6 +723,13 @@ const App: React.FC = () => {
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
                         {currentSlide ? `生成中... (${currentSlide.current}/${currentSlide.total})` : '生成中...'}
+                      </>
+                    ) : selectedReference ? (
+                      <>
+                        <svg className="w-5 h-5 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                        </svg>
+                        参考ストーリーズのスタイルで3パターン生成
                       </>
                     ) : selectedTemplate ? (
                       <>

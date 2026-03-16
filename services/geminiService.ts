@@ -377,6 +377,107 @@ Generate the image now.`;
   }
 }
 
+// --- 参考ストーリーズ付き生成 ---
+
+const REFERENCE_STORY_SYSTEM_PROMPT = `You are an expert Instagram Story designer and visual analyst. You will receive a REFERENCE Instagram Story image. Your task is to deeply analyze its design DNA — color palette, layout structure, typography style, decorative elements, visual rhythm — and create a BRAND NEW Instagram Story image (9:16 vertical, 1080x1920px) that faithfully reproduces the same design language but with completely new content.
+
+CRITICAL RULES:
+1. ANALYZE the reference image's design system: color scheme, gradient usage, text placement zones, decorative patterns, spacing, visual hierarchy
+2. REPRODUCE the same aesthetic — a viewer should feel both images belong to the same design series
+3. The new image must contain the user's text message, styled in the same typographic approach as the reference
+4. DO NOT copy the reference image — create a NEW composition with the SAME design language
+5. Maintain the same level of visual sophistication and professional quality
+6. Output only the generated image`;
+
+async function generateImageFromReference(
+  referenceBase64: string,
+  referenceMimeType: string,
+  textMessage: string,
+  atmosphereNote: string,
+  patternIndex: number,
+  logoPalette?: string[]
+): Promise<string> {
+  const ai = getGeminiClient();
+
+  const imageModel =
+    import.meta.env.VITE_GEMINI_IMAGE_MODEL || 'nano-banana-pro-preview';
+
+  const styleVariations = [
+    `VARIATION TYPE: Faithful Reproduction
+Recreate the reference design as closely as possible — same layout zones, same color relationships, same decorative approach. Change only the text content. This should look like a direct continuation of the same campaign.`,
+
+    `VARIATION TYPE: Layout Exploration
+Keep the EXACT same color palette and typography style from the reference, but explore a DIFFERENT layout arrangement. If the reference has text on top, try text on the side or bottom. Maintain the same visual density and decorative approach.`,
+
+    `VARIATION TYPE: Color Exploration
+Keep the EXACT same layout structure and typography style from the reference, but shift the color palette slightly — try complementary tones, a warmer/cooler variant, or an inverted light/dark scheme while preserving the same design sophistication.`,
+  ];
+
+  const userPrompt = `Study this reference Instagram Story image carefully. Analyze its complete design DNA: colors, gradients, layout, typography style, decorative elements, spacing, and visual hierarchy.
+
+Now create a NEW Instagram Story image (9:16 vertical) with the SAME design language but featuring this text:
+"${textMessage}"
+
+${styleVariations[patternIndex] || styleVariations[0]}
+
+${atmosphereNote ? `Additional style direction: ${atmosphereNote}` : ''}
+${logoPalette && logoPalette.length > 0 ? `Brand color palette to incorporate: ${logoPalette.join(', ')}` : ''}
+
+IMPORTANT: The result must feel like it belongs to the same design series as the reference. Reproduce the design DNA, not the exact image.
+
+Generate the image now.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: imageModel,
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType: referenceMimeType,
+                data: referenceBase64,
+              },
+            },
+            { text: userPrompt },
+          ],
+        },
+      ],
+      config: {
+        systemInstruction: REFERENCE_STORY_SYSTEM_PROMPT,
+        responseModalities: ['IMAGE', 'TEXT'],
+      },
+    });
+
+    const parts = response.candidates?.[0]?.content?.parts;
+    if (parts) {
+      for (const part of parts) {
+        if (part.inlineData) {
+          const mimeType = part.inlineData.mimeType || 'image/png';
+          const base64Data = part.inlineData.data;
+          return `data:${mimeType};base64,${base64Data}`;
+        }
+      }
+    }
+
+    throw new GeminiServiceError('レスポンスに画像データが含まれていません。');
+  } catch (error) {
+    if (
+      error instanceof GeminiServiceError ||
+      (error instanceof Error &&
+        (error.message.includes('not supported') ||
+          error.message.includes('not found') ||
+          error.message.includes('INVALID_ARGUMENT')))
+    ) {
+      console.warn('参考ストーリーズ生成失敗、テキスト付き背景生成にフォールバック');
+      const fallbackPrompt = `9:16 vertical Instagram story background, professional design with space for text overlay about "${textMessage}", ${atmosphereNote || 'modern clean style'}, no text, no letters, no words`;
+      return generateImageWithImagen(fallbackPrompt);
+    }
+    throw error;
+  }
+}
+
 // --- Orchestrator: メッセージ + 雰囲気 → 3パターン生成 ---
 
 export const generateStoryBackgrounds = async (
@@ -385,7 +486,8 @@ export const generateStoryBackgrounds = async (
   brandColor: string,
   callbacks?: WorkflowProgressCallback,
   templateImageUrl?: string,
-  logoPalette?: string[]
+  logoPalette?: string[],
+  referenceStoryUrl?: string
 ): Promise<GeneratedImage[]> => {
   if (!message) {
     throw new Error('描きたいメッセージを入力してください。');
@@ -394,6 +496,77 @@ export const generateStoryBackgrounds = async (
   const TOTAL_PATTERNS = 3;
 
   try {
+    // 参考ストーリーズがある場合: デザインDNA再現生成
+    if (referenceStoryUrl) {
+      callbacks?.onProgress?.('参考ストーリーズを分析中...');
+      const { base64, mimeType } = await fetchImageAsBase64(referenceStoryUrl);
+
+      const generatedImages: GeneratedImage[] = [];
+
+      for (let i = 0; i < TOTAL_PATTERNS; i++) {
+        callbacks?.onSlideGenerated?.(i, TOTAL_PATTERNS);
+        callbacks?.onProgress?.(
+          `パターン ${i + 1}/${TOTAL_PATTERNS} を生成中...`
+        );
+
+        try {
+          console.log(`参考ストーリーズ パターン ${i + 1} 生成`);
+          const imageDataUrl = await generateImageFromReference(
+            base64,
+            mimeType,
+            message,
+            atmosphereNote,
+            i,
+            logoPalette
+          );
+
+          generatedImages.push({
+            id: `ref-pattern-${i + 1}-${Date.now()}`,
+            url: imageDataUrl,
+            prompt: `参考ストーリーズ + "${message}" パターン${i + 1}`,
+            slideNumber: i + 1,
+            resolution: '1080x1920',
+            settings: {
+              blur: 0,
+              brightness: 100,
+              brandOverlay: false,
+              textOverlay: {
+                textContent: '',
+                layout: 'center_focus' as LayoutType,
+                fontSize: 24,
+                textColor: '#FFFFFF',
+                textVisible: false,
+              },
+              logoOverlay: {
+                visible: false,
+                ...getLogoPositionForTemplatePattern(i),
+              },
+            },
+          });
+
+          callbacks?.onSlideGenerated?.(i + 1, TOTAL_PATTERNS);
+          console.log(`参考ストーリーズ パターン ${i + 1} 生成完了`);
+        } catch (err) {
+          console.error(`参考ストーリーズ パターン ${i + 1} 失敗:`, err);
+          callbacks?.onProgress?.(
+            `パターン ${i + 1} の生成に失敗しました。次のパターンに進みます...`
+          );
+        }
+      }
+
+      if (generatedImages.length === 0) {
+        throw new GeminiServiceError(
+          'すべての画像生成に失敗しました。APIキーの設定やモデルの利用可能性を確認してください。'
+        );
+      }
+
+      callbacks?.onSlideGenerated?.(generatedImages.length, TOTAL_PATTERNS);
+      callbacks?.onProgress?.(
+        `${generatedImages.length}パターンを生成しました！`
+      );
+      return generatedImages;
+    }
+
     // テンプレート画像がある場合: マルチモーダル生成
     if (templateImageUrl) {
       callbacks?.onProgress?.('素材画像を読み込み中...');
