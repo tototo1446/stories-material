@@ -285,7 +285,8 @@ async function generateImageFromTemplate(
   textMessage: string,
   atmosphereNote: string,
   patternIndex: number,
-  logoPalette?: string[]
+  logoPalette?: string[],
+  backgroundOnly?: boolean
 ): Promise<string> {
   const ai = getGeminiClient();
 
@@ -309,7 +310,23 @@ TEXT STYLE: Modern typography, bold weight, with a subtle drop shadow or backgro
 OVERALL: Stylish, magazine-quality Instagram Story design.`,
   ];
 
-  const userPrompt = `Study this reference photo carefully. Create a NEW Instagram Story image (9:16 vertical) featuring the SAME person/product but in a COMPLETELY DIFFERENT composition.
+  const userPrompt = backgroundOnly
+    ? `Study this reference photo to understand the visual style and color palette. Create a NEW Instagram Story image (9:16 vertical) using ONLY a scenic/atmospheric background — DO NOT include any person or product.
+
+Text to render on the image: "${textMessage}"
+
+${styleVariations[patternIndex] || styleVariations[0]}
+
+${atmosphereNote ? `Background scene direction: ${atmosphereNote}` : 'Use a professional, atmospheric background scene.'}
+${logoPalette && logoPalette.length > 0 ? `Brand color palette: ${logoPalette.join(', ')}. Incorporate these colors into the design.` : ''}
+
+IMPORTANT REMINDERS:
+- DO NOT include any person or product — background/scene only
+- Text must be clearly readable with proper contrast
+- Use the color palette and mood from the reference photo
+
+Generate the image now.`
+    : `Study this reference photo carefully. Create a NEW Instagram Story image (9:16 vertical) featuring the SAME person/product but in a COMPLETELY DIFFERENT composition.
 
 Text to render on the image: "${textMessage}"
 
@@ -407,14 +424,15 @@ async function generateImageFromReference(
   textMessage: string,
   atmosphereNote: string,
   patternIndex: number,
-  logoPalette?: string[]
+  logoPalette?: string[],
+  backgroundOnly?: boolean
 ): Promise<string> {
   const ai = getGeminiClient();
 
   const imageModel =
     import.meta.env.VITE_GEMINI_IMAGE_MODEL || 'nano-banana-pro-preview';
 
-  const styleVariations = [
+  const styleVariationsWithPerson = [
     `VARIATION TYPE: Faithful Reproduction
 Reproduce the reference layout as closely as possible. Same person placement ratio, same text position, same text container style, same background treatment. Only change the text content. This should look like the NEXT post in the same series.`,
 
@@ -425,7 +443,35 @@ Keep the EXACT same layout structure (person position, text zone, text container
 Keep the EXACT same person placement and overall composition. Keep text in the same position. But try a slightly different text container treatment — for example, if the reference uses white rounded boxes, try a colored or semi-transparent variant, or try a different arrangement of the text lines while keeping them in the same zone.`,
   ];
 
-  const userPrompt = `Look at this reference Instagram Story image very carefully.
+  const styleVariationsBackgroundOnly = [
+    `VARIATION TYPE: Scene Background — Faithful Style
+Replace the person with a scenic background or atmospheric photo (e.g., ocean, cityscape, cafe interior, nature, abstract). Keep the EXACT same text container style, text position, and overall layout structure from the reference. The background scene should fill the area where the person was.`,
+
+    `VARIATION TYPE: Scene Background — Textured/Abstract
+Replace the person with a textured or abstract background (gradients, patterns, bokeh, soft textures). Keep the EXACT same text container style, text position, and decorative elements from the reference. The result should look like the same design template but with an atmospheric background instead of a person.`,
+
+    `VARIATION TYPE: Scene Background — Lifestyle/Environment
+Replace the person with a lifestyle or environmental photo (workspace, food, travel scenery, product flat-lay). Keep the EXACT same text container style, text position, and color scheme from the reference. It should feel like the same series but photographed from a different perspective.`,
+  ];
+
+  const styleVariations = backgroundOnly ? styleVariationsBackgroundOnly : styleVariationsWithPerson;
+
+  const analysisBlock = backgroundOnly
+    ? `Look at this reference Instagram Story image very carefully.
+
+ANALYZE its structure (IGNORE the person — focus on everything else):
+- Where is the text placed? (top/bottom/middle/overlay?)
+- Are there text containers (boxes, banners)? What shape and color?
+- What is the text style (color, weight, size)?
+- Are there any emoji, icons, or decorative elements?
+- What is the overall color scheme and mood?
+
+Now create a NEW Instagram Story image (9:16 vertical) that follows the SAME text/design pattern but with a SCENIC BACKGROUND instead of a person.
+${atmosphereNote ? `Background scene direction: ${atmosphereNote}` : 'Use an atmospheric, professional background scene that complements the text.'}
+
+The text content should be:
+"${textMessage}"`
+    : `Look at this reference Instagram Story image very carefully.
 
 ANALYZE its structure:
 - How much of the frame does the person/subject fill?
@@ -436,14 +482,16 @@ ANALYZE its structure:
 - Are there any emoji, icons, or decorative elements?
 
 Now create a NEW Instagram Story image (9:16 vertical) that follows the EXACT SAME structural pattern, but with this text:
-"${textMessage}"
+"${textMessage}"`;
+
+  const userPrompt = `${analysisBlock}
 
 ${styleVariations[patternIndex] || styleVariations[0]}
 
-${atmosphereNote ? `Additional style direction: ${atmosphereNote}` : ''}
+${!backgroundOnly && atmosphereNote ? `Additional style direction: ${atmosphereNote}` : ''}
 ${logoPalette && logoPalette.length > 0 ? `Brand color palette to incorporate: ${logoPalette.join(', ')}` : ''}
 
-CRITICAL: The structural layout (person size, person position, text position, text container style) MUST match the reference. A viewer scrolling through Instagram should feel this was made by the same person using the same template.
+CRITICAL: The text containers, text style, text position, and decorative elements MUST match the reference.${backgroundOnly ? ' Replace the person/subject area with the described background scene.' : ' The structural layout (person size, person position) MUST also match.'} A viewer scrolling through Instagram should feel this was made by the same person using the same template.
 
 Generate the image now.`;
 
@@ -507,7 +555,8 @@ export const generateStoryBackgrounds = async (
   callbacks?: WorkflowProgressCallback,
   templateImageUrl?: string,
   logoPalette?: string[],
-  referenceStoryUrl?: string
+  referenceStoryUrl?: string,
+  backgroundOnly?: boolean
 ): Promise<GeneratedImage[]> => {
   if (!message) {
     throw new Error('描きたいメッセージを入力してください。');
@@ -537,7 +586,8 @@ export const generateStoryBackgrounds = async (
             message,
             atmosphereNote,
             i,
-            logoPalette
+            logoPalette,
+            backgroundOnly
           );
 
           generatedImages.push({
@@ -608,7 +658,8 @@ export const generateStoryBackgrounds = async (
             message,
             atmosphereNote,
             i,
-            logoPalette
+            logoPalette,
+            backgroundOnly
           );
 
           generatedImages.push({

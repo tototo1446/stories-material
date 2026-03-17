@@ -60,6 +60,7 @@ const App: React.FC = () => {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [referenceStories, setReferenceStories] = useState<ReferenceStory[]>([]);
   const [selectedReferenceId, setSelectedReferenceId] = useState<string | null>(null);
+  const [backgroundOnly, setBackgroundOnly] = useState(false);
 
   const [isInpaintingMode, setIsInpaintingMode] = useState(false);
   const [isInpainting, setIsInpainting] = useState(false);
@@ -306,18 +307,6 @@ const App: React.FC = () => {
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
   const selectedReference = referenceStories.find(s => s.id === selectedReferenceId);
 
-  // 排他選択: テンプレート選択時は参考ストーリーズをクリア
-  const handleSelectTemplate = (id: string | null) => {
-    setSelectedTemplateId(id);
-    if (id) setSelectedReferenceId(null);
-  };
-
-  // 排他選択: 参考ストーリーズ選択時はテンプレートをクリア
-  const handleSelectReference = (id: string | null) => {
-    setSelectedReferenceId(id);
-    if (id) setSelectedTemplateId(null);
-  };
-
   const showToast = (message: string, type: 'success' | 'error' | 'info', duration?: number) => {
     setToast({ id: Date.now().toString(), message, type, duration });
   };
@@ -352,7 +341,8 @@ const App: React.FC = () => {
         },
         selectedTemplate?.dataUrl,
         logoPalette,
-        selectedReference?.dataUrl
+        selectedReference?.dataUrl,
+        backgroundOnly
       );
 
       if (newImages.length === 0) {
@@ -595,7 +585,7 @@ const App: React.FC = () => {
                   <TemplateGallery
                     templates={templates}
                     selectedTemplateId={selectedTemplateId}
-                    onSelect={handleSelectTemplate}
+                    onSelect={setSelectedTemplateId}
                     onTemplatesChange={setTemplates}
                   />
                 </div>
@@ -604,7 +594,7 @@ const App: React.FC = () => {
                   <ReferenceStoryGallery
                     referenceStories={referenceStories}
                     selectedReferenceId={selectedReferenceId}
-                    onSelect={handleSelectReference}
+                    onSelect={setSelectedReferenceId}
                     onReferenceStoriesChange={setReferenceStories}
                   />
                 </div>
@@ -638,9 +628,23 @@ const App: React.FC = () => {
                       type="text"
                       value={atmosphereNote}
                       onChange={(e) => setAtmosphereNote(e.target.value)}
-                      placeholder="例：文字を強調して、背景白、ポップな雰囲気..."
+                      placeholder={backgroundOnly ? '例：海、カフェ、夜景、ワークスペース...' : '例：文字を強調して、背景白、ポップな雰囲気...'}
                       className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
                     />
+                  </div>
+
+                  {/* 背景のみモード */}
+                  <div className="flex items-center justify-between p-4 bg-slate-900/50 rounded-2xl border border-slate-700">
+                    <div>
+                      <label className="text-sm font-medium text-slate-300">背景のみ（人物なし）</label>
+                      <p className="text-[10px] text-slate-500">人物を含めず、シーン背景のみで生成</p>
+                    </div>
+                    <button
+                      onClick={() => setBackgroundOnly(!backgroundOnly)}
+                      className={`w-12 h-6 rounded-full transition-colors relative ${backgroundOnly ? 'bg-emerald-600' : 'bg-slate-600'}`}
+                    >
+                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${backgroundOnly ? 'translate-x-7' : 'translate-x-1'}`} />
+                    </button>
                   </div>
 
                   {/* ロゴ関連トグル */}
@@ -714,7 +718,7 @@ const App: React.FC = () => {
                   <button
                     onClick={handleGenerate}
                     disabled={isGenerating || !message}
-                    className={`w-full py-4 ${selectedReference ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/20' : selectedTemplate ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-600/20' : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/20'} disabled:bg-slate-700 disabled:opacity-50 text-white font-bold rounded-2xl transition-all shadow-xl flex items-center justify-center gap-2 group`}
+                    className={`w-full py-4 ${selectedTemplate && selectedReference ? 'bg-gradient-to-r from-pink-600 to-amber-600 hover:from-pink-500 hover:to-amber-500 shadow-pink-600/20' : selectedReference ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/20' : selectedTemplate ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-600/20' : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/20'} disabled:bg-slate-700 disabled:opacity-50 text-white font-bold rounded-2xl transition-all shadow-xl flex items-center justify-center gap-2 group`}
                   >
                     {isGenerating ? (
                       <>
@@ -723,6 +727,13 @@ const App: React.FC = () => {
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
                         {currentSlide ? `生成中... (${currentSlide.current}/${currentSlide.total})` : '生成中...'}
+                      </>
+                    ) : selectedTemplate && selectedReference ? (
+                      <>
+                        <svg className="w-5 h-5 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        素材+参考スタイルで3パターン生成
                       </>
                     ) : selectedReference ? (
                       <>
