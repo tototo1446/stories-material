@@ -546,6 +546,148 @@ Generate the image now.`;
   }
 }
 
+// --- 素材画像 + 参考ストーリーズ 両方を使った生成 ---
+
+const COMBINED_SYSTEM_PROMPT = `You are an expert Instagram Story designer. You will receive TWO reference images:
+1. IMAGE 1 (FIRST image): A TEMPLATE photo of a person or product — use this person/product as the SUBJECT
+2. IMAGE 2 (SECOND image): A REFERENCE Instagram Story — use this as the DESIGN TEMPLATE (layout, text style, text containers, colors)
+
+Your job is to create a NEW Instagram Story image (9:16 vertical, 1080x1920px) that combines:
+- The PERSON/PRODUCT from Image 1 (the template photo)
+- The DESIGN STYLE from Image 2 (the reference story)
+
+CRITICAL RULES:
+1. The person/product from Image 1 MUST appear in the generated image
+2. The layout structure, text container style, text positioning, and color scheme MUST match Image 2
+3. Place the person/product in the same area/proportion as the subject in Image 2
+4. Use the text containers (shape, color, position) exactly as shown in Image 2
+5. The result should look like the person from Image 1 was photographed for the design template of Image 2
+6. Output only the generated image`;
+
+async function generateImageFromCombined(
+  templateBase64: string,
+  templateMimeType: string,
+  referenceBase64: string,
+  referenceMimeType: string,
+  textMessage: string,
+  atmosphereNote: string,
+  patternIndex: number,
+  logoPalette?: string[],
+  backgroundOnly?: boolean
+): Promise<string> {
+  const ai = getGeminiClient();
+
+  const imageModel =
+    import.meta.env.VITE_GEMINI_IMAGE_MODEL || 'nano-banana-pro-preview';
+
+  const styleVariations = [
+    `VARIATION: Faithful combination — place the person from Image 1 into the exact layout structure of Image 2. Match Image 2's text containers, text position, and color scheme precisely.`,
+
+    `VARIATION: Slightly different angle — use the person from Image 1 but in a slightly different pose/crop. Keep Image 2's design template (text containers, text position, colors) exactly the same.`,
+
+    `VARIATION: Alternative text arrangement — use the person from Image 1 in Image 2's layout. Keep the same text container style but try a slightly different text arrangement (e.g., different line breaks or text box grouping).`,
+  ];
+
+  const userPrompt = backgroundOnly
+    ? `Image 1 is a template photo (IGNORE the person — use only the color palette and mood).
+Image 2 is a reference Instagram Story (use its DESIGN TEMPLATE: text containers, text position, layout structure).
+
+Create a NEW Instagram Story (9:16 vertical) that combines:
+- The COLOR PALETTE and mood from Image 1
+- The DESIGN TEMPLATE (text containers, text style, text position) from Image 2
+- A scenic/atmospheric BACKGROUND instead of a person
+${atmosphereNote ? `Background scene: ${atmosphereNote}` : ''}
+
+Text content: "${textMessage}"
+
+${styleVariations[patternIndex] || styleVariations[0]}
+${logoPalette && logoPalette.length > 0 ? `Brand color palette: ${logoPalette.join(', ')}` : ''}
+
+CRITICAL: DO NOT include any person. Use Image 2's text containers and layout with a background scene.
+
+Generate the image now.`
+    : `Image 1 is a template photo of a PERSON/PRODUCT — this is the SUBJECT to include.
+Image 2 is a reference Instagram Story — this is the DESIGN TEMPLATE to follow.
+
+Create a NEW Instagram Story (9:16 vertical) that:
+- Features the SAME PERSON/PRODUCT from Image 1
+- Uses the EXACT SAME design template from Image 2 (text containers, text position, layout, colors)
+
+Text content: "${textMessage}"
+
+${styleVariations[patternIndex] || styleVariations[0]}
+
+${atmosphereNote ? `Additional style direction: ${atmosphereNote}` : ''}
+${logoPalette && logoPalette.length > 0 ? `Brand color palette: ${logoPalette.join(', ')}` : ''}
+
+CRITICAL: The person from Image 1 MUST appear. The design (text containers, text position, colors) MUST match Image 2.
+
+Generate the image now.`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: imageModel,
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType: templateMimeType,
+                data: templateBase64,
+              },
+            },
+            {
+              inlineData: {
+                mimeType: referenceMimeType,
+                data: referenceBase64,
+              },
+            },
+            { text: userPrompt },
+          ],
+        },
+      ],
+      config: {
+        systemInstruction: COMBINED_SYSTEM_PROMPT,
+        responseModalities: ['IMAGE', 'TEXT'],
+      },
+    });
+
+    const parts = response.candidates?.[0]?.content?.parts;
+    if (parts) {
+      for (const part of parts) {
+        if (part.inlineData) {
+          const mimeType = part.inlineData.mimeType || 'image/png';
+          const base64Data = part.inlineData.data;
+          return `data:${mimeType};base64,${base64Data}`;
+        }
+      }
+    }
+
+    throw new GeminiServiceError('レスポンスに画像データが含まれていません。');
+  } catch (error) {
+    if (
+      error instanceof GeminiServiceError ||
+      (error instanceof Error &&
+        (error.message.includes('not supported') ||
+          error.message.includes('not found') ||
+          error.message.includes('INVALID_ARGUMENT')))
+    ) {
+      console.warn('素材+参考ストーリーズ結合生成失敗、参考ストーリーズのみにフォールバック');
+      return generateImageFromReference(
+        referenceBase64,
+        referenceMimeType,
+        textMessage,
+        atmosphereNote,
+        patternIndex,
+        logoPalette,
+        backgroundOnly
+      );
+    }
+    throw error;
+  }
+}
+
 // --- Orchestrator: メッセージ + 雰囲気 → 3パターン生成 ---
 
 export const generateStoryBackgrounds = async (
@@ -565,7 +707,82 @@ export const generateStoryBackgrounds = async (
   const TOTAL_PATTERNS = 3;
 
   try {
-    // 参考ストーリーズがある場合: デザインDNA再現生成
+    // 素材画像 + 参考ストーリーズ 両方がある場合: 結合生成
+    if (templateImageUrl && referenceStoryUrl) {
+      callbacks?.onProgress?.('素材画像と参考ストーリーズを読み込み中...');
+      const template = await fetchImageAsBase64(templateImageUrl);
+      const reference = await fetchImageAsBase64(referenceStoryUrl);
+
+      const generatedImages: GeneratedImage[] = [];
+
+      for (let i = 0; i < TOTAL_PATTERNS; i++) {
+        callbacks?.onSlideGenerated?.(i, TOTAL_PATTERNS);
+        callbacks?.onProgress?.(
+          `パターン ${i + 1}/${TOTAL_PATTERNS} を生成中...`
+        );
+
+        try {
+          console.log(`素材+参考 パターン ${i + 1} 生成`);
+          const imageDataUrl = await generateImageFromCombined(
+            template.base64,
+            template.mimeType,
+            reference.base64,
+            reference.mimeType,
+            message,
+            atmosphereNote,
+            i,
+            logoPalette,
+            backgroundOnly
+          );
+
+          generatedImages.push({
+            id: `combined-pattern-${i + 1}-${Date.now()}`,
+            url: imageDataUrl,
+            prompt: `素材+参考 + "${message}" パターン${i + 1}`,
+            slideNumber: i + 1,
+            resolution: '1080x1920',
+            settings: {
+              blur: 0,
+              brightness: 100,
+              brandOverlay: false,
+              textOverlay: {
+                textContent: '',
+                layout: 'center_focus' as LayoutType,
+                fontSize: 24,
+                textColor: '#FFFFFF',
+                textVisible: false,
+              },
+              logoOverlay: {
+                visible: false,
+                ...getLogoPositionForTemplatePattern(i),
+              },
+            },
+          });
+
+          callbacks?.onSlideGenerated?.(i + 1, TOTAL_PATTERNS);
+          console.log(`素材+参考 パターン ${i + 1} 生成完了`);
+        } catch (err) {
+          console.error(`素材+参考 パターン ${i + 1} 失敗:`, err);
+          callbacks?.onProgress?.(
+            `パターン ${i + 1} の生成に失敗しました。次のパターンに進みます...`
+          );
+        }
+      }
+
+      if (generatedImages.length === 0) {
+        throw new GeminiServiceError(
+          'すべての画像生成に失敗しました。APIキーの設定やモデルの利用可能性を確認してください。'
+        );
+      }
+
+      callbacks?.onSlideGenerated?.(generatedImages.length, TOTAL_PATTERNS);
+      callbacks?.onProgress?.(
+        `${generatedImages.length}パターンを生成しました！`
+      );
+      return generatedImages;
+    }
+
+    // 参考ストーリーズのみの場合: デザインDNA再現生成
     if (referenceStoryUrl) {
       callbacks?.onProgress?.('参考ストーリーズを分析中...');
       const { base64, mimeType } = await fetchImageAsBase64(referenceStoryUrl);
