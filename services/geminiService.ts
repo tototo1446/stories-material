@@ -379,14 +379,26 @@ Generate the image now.`;
 
 // --- 参考ストーリーズ付き生成 ---
 
-const REFERENCE_STORY_SYSTEM_PROMPT = `You are an expert Instagram Story designer and visual analyst. You will receive a REFERENCE Instagram Story image. Your task is to deeply analyze its design DNA — color palette, layout structure, typography style, decorative elements, visual rhythm — and create a BRAND NEW Instagram Story image (9:16 vertical, 1080x1920px) that faithfully reproduces the same design language but with completely new content.
+const REFERENCE_STORY_SYSTEM_PROMPT = `You are an expert Instagram Story designer. You will receive a REFERENCE Instagram Story image. Your job is to create a NEW Instagram Story image (9:16 vertical, 1080x1920px) that reproduces the EXACT SAME structural layout and design pattern.
+
+STEP 1 — STRUCTURAL ANALYSIS (do this internally before generating):
+Analyze the reference image for these specific structural elements:
+A. PERSON/SUBJECT PLACEMENT: What percentage of the frame does the person occupy? Where are they positioned (center, left, right)? How much of their body is visible (face only, upper body, full body)?
+B. TEXT PLACEMENT: Where exactly is the text? (top, bottom, middle, overlay on person?) What percentage of the screen height does the text zone occupy?
+C. TEXT CONTAINERS: Are there text boxes/banners? What shape (rounded rectangle, pill, none)? What color (white, colored, transparent)?
+D. TEXT STYLE: What is the text color, weight (bold/regular), approximate size relative to the image?
+E. BACKGROUND: Does the photo fill the entire screen? Is there a separate background area?
+F. DECORATIVE ELEMENTS: Any emoji, icons, stickers, or graphic elements? Where are they placed?
+
+STEP 2 — FAITHFUL REPRODUCTION:
+Create a new image that matches ALL of the above structural elements as closely as possible. The viewer should feel this was made by the same creator in the same series.
 
 CRITICAL RULES:
-1. ANALYZE the reference image's design system: color scheme, gradient usage, text placement zones, decorative patterns, spacing, visual hierarchy
-2. REPRODUCE the same aesthetic — a viewer should feel both images belong to the same design series
-3. The new image must contain the user's text message, styled in the same typographic approach as the reference
-4. DO NOT copy the reference image — create a NEW composition with the SAME design language
-5. Maintain the same level of visual sophistication and professional quality
+1. MATCH the exact same layout structure — if the person fills 70% of the frame in the reference, do the same
+2. MATCH the text container style — if the reference uses white rounded rectangles at the bottom, do the same
+3. MATCH the text style — same weight, similar size, same color scheme
+4. MATCH the overall composition ratio between person area and text area
+5. Use the user's new text content but render it in the SAME typographic approach
 6. Output only the generated image`;
 
 async function generateImageFromReference(
@@ -404,18 +416,26 @@ async function generateImageFromReference(
 
   const styleVariations = [
     `VARIATION TYPE: Faithful Reproduction
-Recreate the reference design as closely as possible — same layout zones, same color relationships, same decorative approach. Change only the text content. This should look like a direct continuation of the same campaign.`,
+Reproduce the reference layout as closely as possible. Same person placement ratio, same text position, same text container style, same background treatment. Only change the text content. This should look like the NEXT post in the same series.`,
 
-    `VARIATION TYPE: Layout Exploration
-Keep the EXACT same color palette and typography style from the reference, but explore a DIFFERENT layout arrangement. If the reference has text on top, try text on the side or bottom. Maintain the same visual density and decorative approach.`,
+    `VARIATION TYPE: Slight Angle Variation
+Keep the EXACT same layout structure (person position, text zone, text container style) but change the person's pose or camera angle slightly (e.g., if front-facing selfie, try a slight side angle). Keep text containers, colors, and positioning identical to the reference.`,
 
-    `VARIATION TYPE: Color Exploration
-Keep the EXACT same layout structure and typography style from the reference, but shift the color palette slightly — try complementary tones, a warmer/cooler variant, or an inverted light/dark scheme while preserving the same design sophistication.`,
+    `VARIATION TYPE: Text Style Variation
+Keep the EXACT same person placement and overall composition. Keep text in the same position. But try a slightly different text container treatment — for example, if the reference uses white rounded boxes, try a colored or semi-transparent variant, or try a different arrangement of the text lines while keeping them in the same zone.`,
   ];
 
-  const userPrompt = `Study this reference Instagram Story image carefully. Analyze its complete design DNA: colors, gradients, layout, typography style, decorative elements, spacing, and visual hierarchy.
+  const userPrompt = `Look at this reference Instagram Story image very carefully.
 
-Now create a NEW Instagram Story image (9:16 vertical) with the SAME design language but featuring this text:
+ANALYZE its structure:
+- How much of the frame does the person/subject fill?
+- Where exactly is the person positioned?
+- Where is the text placed? (top/bottom/middle/overlay?)
+- Are there text containers (boxes, banners)? What shape and color?
+- Does the photo fill the entire screen or is there a separate background?
+- Are there any emoji, icons, or decorative elements?
+
+Now create a NEW Instagram Story image (9:16 vertical) that follows the EXACT SAME structural pattern, but with this text:
 "${textMessage}"
 
 ${styleVariations[patternIndex] || styleVariations[0]}
@@ -423,7 +443,7 @@ ${styleVariations[patternIndex] || styleVariations[0]}
 ${atmosphereNote ? `Additional style direction: ${atmosphereNote}` : ''}
 ${logoPalette && logoPalette.length > 0 ? `Brand color palette to incorporate: ${logoPalette.join(', ')}` : ''}
 
-IMPORTANT: The result must feel like it belongs to the same design series as the reference. Reproduce the design DNA, not the exact image.
+CRITICAL: The structural layout (person size, person position, text position, text container style) MUST match the reference. A viewer scrolling through Instagram should feel this was made by the same person using the same template.
 
 Generate the image now.`;
 
