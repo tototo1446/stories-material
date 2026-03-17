@@ -394,29 +394,147 @@ Generate the image now.`;
   }
 }
 
-// --- 参考ストーリーズ付き生成 ---
+// --- Step 1: 参考ストーリーズの構造を分析（テキストモデル） ---
 
-const REFERENCE_STORY_SYSTEM_PROMPT = `You are an expert Instagram Story designer. You will receive a REFERENCE Instagram Story image. Your job is to create a NEW Instagram Story image (9:16 vertical, 1080x1920px) that reproduces the EXACT SAME structural layout and design pattern.
+interface ReferenceStructure {
+  person_position: string;
+  person_frame_percentage: number;
+  person_body_visible: string;
+  person_pose: string;
+  person_gaze_direction: string;
+  camera_angle: string;
+  text_position: string;
+  text_zone_percentage: number;
+  text_container_shape: string;
+  text_container_color: string;
+  text_color: string;
+  text_weight: string;
+  text_lines_count: number;
+  background_fills_screen: boolean;
+  background_description: string;
+  decorative_elements: string;
+  overall_mood: string;
+}
 
-STEP 1 — STRUCTURAL ANALYSIS (do this internally before generating):
-Analyze the reference image for these specific structural elements:
-A. PERSON/SUBJECT PLACEMENT: What percentage of the frame does the person occupy? Where are they positioned (center, left, right)? How much of their body is visible (face only, upper body, full body)?
-B. TEXT PLACEMENT: Where exactly is the text? (top, bottom, middle, overlay on person?) What percentage of the screen height does the text zone occupy?
-C. TEXT CONTAINERS: Are there text boxes/banners? What shape (rounded rectangle, pill, none)? What color (white, colored, transparent)?
-D. TEXT STYLE: What is the text color, weight (bold/regular), approximate size relative to the image?
-E. BACKGROUND: Does the photo fill the entire screen? Is there a separate background area?
-F. DECORATIVE ELEMENTS: Any emoji, icons, stickers, or graphic elements? Where are they placed?
+async function analyzeReferenceStructure(
+  referenceBase64: string,
+  referenceMimeType: string
+): Promise<ReferenceStructure> {
+  const ai = getGeminiClient();
 
-STEP 2 — FAITHFUL REPRODUCTION:
-Create a new image that matches ALL of the above structural elements as closely as possible. The viewer should feel this was made by the same creator in the same series.
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.0-flash',
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          {
+            inlineData: {
+              mimeType: referenceMimeType,
+              data: referenceBase64,
+            },
+          },
+          {
+            text: `Analyze this Instagram Story image's structural layout in detail. Return a JSON object with these fields:
 
-CRITICAL RULES:
-1. MATCH the exact same layout structure — if the person fills 70% of the frame in the reference, do the same
-2. MATCH the text container style — if the reference uses white rounded rectangles at the bottom, do the same
-3. MATCH the text style — same weight, similar size, same color scheme
-4. MATCH the overall composition ratio between person area and text area
-5. Use the user's new text content but render it in the SAME typographic approach
-6. Output only the generated image`;
+- person_position: Where is the person? ("center", "left", "right", "center-left", "center-right", "none")
+- person_frame_percentage: What % of the frame does the person occupy? (0-100)
+- person_body_visible: What parts are visible? ("face_closeup", "head_and_shoulders", "upper_body", "full_body", "none")
+- person_pose: Describe the pose precisely (e.g., "pointing finger at camera", "arms crossed", "holding phone", "selfie with peace sign")
+- person_gaze_direction: Where is the person looking? ("directly at camera", "looking up", "looking left", "looking down", etc.)
+- camera_angle: Camera perspective ("front-facing selfie", "slightly above", "eye level", "low angle", "side angle")
+- text_position: Where is the text? ("bottom_30%", "top_30%", "center", "bottom_20%", "top_20%")
+- text_zone_percentage: What % of screen height does the text zone occupy? (0-100)
+- text_container_shape: Shape of text containers ("rounded_rectangle", "pill", "rectangle", "none")
+- text_container_color: Color of text containers ("white", "black", "red", "transparent", etc.)
+- text_color: Color of the text itself ("black", "white", "red", etc.)
+- text_weight: Text weight ("extra_bold", "bold", "medium", "regular")
+- text_lines_count: How many separate text lines/blocks are there?
+- background_fills_screen: Does the photo/background fill the entire screen? (true/false)
+- background_description: Brief description of the background ("indoor room", "outdoor", "solid color", "gradient", etc.)
+- decorative_elements: Any emoji, stickers, icons? Describe them and their position ("warning emoji after text", "star sticker top-right", "none")
+- overall_mood: The mood/feel ("urgent/attention-grabbing", "calm/professional", "fun/playful", "serious", etc.)
+
+Return ONLY valid JSON, no markdown.`,
+          },
+        ],
+      },
+    ],
+    config: {
+      temperature: 0.1,
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          person_position: { type: Type.STRING },
+          person_frame_percentage: { type: Type.NUMBER },
+          person_body_visible: { type: Type.STRING },
+          person_pose: { type: Type.STRING },
+          person_gaze_direction: { type: Type.STRING },
+          camera_angle: { type: Type.STRING },
+          text_position: { type: Type.STRING },
+          text_zone_percentage: { type: Type.NUMBER },
+          text_container_shape: { type: Type.STRING },
+          text_container_color: { type: Type.STRING },
+          text_color: { type: Type.STRING },
+          text_weight: { type: Type.STRING },
+          text_lines_count: { type: Type.NUMBER },
+          background_fills_screen: { type: Type.BOOLEAN },
+          background_description: { type: Type.STRING },
+          decorative_elements: { type: Type.STRING },
+          overall_mood: { type: Type.STRING },
+        },
+        required: [
+          'person_position', 'person_frame_percentage', 'person_body_visible',
+          'person_pose', 'person_gaze_direction', 'camera_angle',
+          'text_position', 'text_zone_percentage',
+          'text_container_shape', 'text_container_color',
+          'text_color', 'text_weight', 'text_lines_count',
+          'background_fills_screen', 'background_description',
+          'decorative_elements', 'overall_mood',
+        ],
+      },
+    },
+  });
+
+  const text = response.text;
+  if (!text) throw new GeminiServiceError('参考画像の構造分析に失敗しました。');
+
+  return JSON.parse(text) as ReferenceStructure;
+}
+
+function buildStructureDescription(s: ReferenceStructure): string {
+  return `## EXACT LAYOUT SPECIFICATION (you MUST follow this precisely)
+
+### PERSON/SUBJECT
+- Position: ${s.person_position} of the frame
+- Frame coverage: ${s.person_frame_percentage}% of the image
+- Body visible: ${s.person_body_visible}
+- Pose: ${s.person_pose}
+- Gaze direction: ${s.person_gaze_direction}
+- Camera angle: ${s.camera_angle}
+
+### TEXT
+- Position: ${s.text_position} of the screen
+- Text zone height: ${s.text_zone_percentage}% of screen
+- Container shape: ${s.text_container_shape}
+- Container color: ${s.text_container_color}
+- Text color: ${s.text_color}
+- Text weight: ${s.text_weight}
+- Number of text blocks: ${s.text_lines_count}
+
+### BACKGROUND
+- Photo fills entire screen: ${s.background_fills_screen}
+- Background: ${s.background_description}
+
+### DECORATIVE ELEMENTS
+- ${s.decorative_elements}
+
+### MOOD
+- ${s.overall_mood}`;
+}
+
+// --- 参考ストーリーズ付き生成（構造分析結果を使用） ---
 
 async function generateImageFromReference(
   referenceBase64: string,
@@ -425,73 +543,59 @@ async function generateImageFromReference(
   atmosphereNote: string,
   patternIndex: number,
   logoPalette?: string[],
-  backgroundOnly?: boolean
+  backgroundOnly?: boolean,
+  structureOverride?: ReferenceStructure
 ): Promise<string> {
   const ai = getGeminiClient();
 
   const imageModel =
     import.meta.env.VITE_GEMINI_IMAGE_MODEL || 'nano-banana-pro-preview';
 
-  const styleVariationsWithPerson = [
-    `VARIATION TYPE: Faithful Reproduction
-Reproduce the reference layout as closely as possible. Same person placement ratio, same text position, same text container style, same background treatment. Only change the text content. This should look like the NEXT post in the same series.`,
+  const structure = structureOverride || await analyzeReferenceStructure(referenceBase64, referenceMimeType);
+  const structureDesc = buildStructureDescription(structure);
 
-    `VARIATION TYPE: Slight Angle Variation
-Keep the EXACT same layout structure (person position, text zone, text container style) but change the person's pose or camera angle slightly (e.g., if front-facing selfie, try a slight side angle). Keep text containers, colors, and positioning identical to the reference.`,
+  const systemPrompt = `You are an expert Instagram Story designer. You will receive a REFERENCE image and a detailed structural specification. Your job is to create a NEW image (9:16 vertical, 1080x1920px) that EXACTLY matches the structural specification.
 
-    `VARIATION TYPE: Text Style Variation
-Keep the EXACT same person placement and overall composition. Keep text in the same position. But try a slightly different text container treatment — for example, if the reference uses white rounded boxes, try a colored or semi-transparent variant, or try a different arrangement of the text lines while keeping them in the same zone.`,
+You MUST follow EVERY detail in the specification:
+- Person position and frame coverage EXACTLY as specified
+- Person pose and gaze direction EXACTLY as specified
+- Camera angle EXACTLY as specified
+- Text containers (shape, color, position) EXACTLY as specified
+- Text styling (color, weight) EXACTLY as specified
+- Background treatment EXACTLY as specified
+- Decorative elements in the same positions
+
+Output only the generated image.`;
+
+  const variationNotes = [
+    'Follow the specification exactly. This should be indistinguishable from the same series.',
+    'Follow the specification exactly but use a very slightly different camera angle (5-10 degrees shift only). Everything else identical.',
+    'Follow the specification exactly but try a minor variation in the text container (e.g., slightly different corner radius or opacity). Person and layout identical.',
   ];
 
-  const styleVariationsBackgroundOnly = [
-    `VARIATION TYPE: Scene Background — Faithful Style
-Replace the person with a scenic background or atmospheric photo (e.g., ocean, cityscape, cafe interior, nature, abstract). Keep the EXACT same text container style, text position, and overall layout structure from the reference. The background scene should fill the area where the person was.`,
+  const subjectInstruction = backgroundOnly
+    ? `SUBJECT: Instead of a person, use a scenic/atmospheric background that fills the person area.
+${atmosphereNote ? `Scene description: ${atmosphereNote}` : 'Use a professional atmospheric scene.'}`
+    : `SUBJECT: Generate a person matching this pose description exactly.
+${atmosphereNote ? `Additional style: ${atmosphereNote}` : ''}`;
 
-    `VARIATION TYPE: Scene Background — Textured/Abstract
-Replace the person with a textured or abstract background (gradients, patterns, bokeh, soft textures). Keep the EXACT same text container style, text position, and decorative elements from the reference. The result should look like the same design template but with an atmospheric background instead of a person.`,
+  const userPrompt = `Here is the reference image for visual style reference.
 
-    `VARIATION TYPE: Scene Background — Lifestyle/Environment
-Replace the person with a lifestyle or environmental photo (workspace, food, travel scenery, product flat-lay). Keep the EXACT same text container style, text position, and color scheme from the reference. It should feel like the same series but photographed from a different perspective.`,
-  ];
+${structureDesc}
 
-  const styleVariations = backgroundOnly ? styleVariationsBackgroundOnly : styleVariationsWithPerson;
+${subjectInstruction}
 
-  const analysisBlock = backgroundOnly
-    ? `Look at this reference Instagram Story image very carefully.
+TEXT CONTENT to render: "${textMessage}"
 
-ANALYZE its structure (IGNORE the person — focus on everything else):
-- Where is the text placed? (top/bottom/middle/overlay?)
-- Are there text containers (boxes, banners)? What shape and color?
-- What is the text style (color, weight, size)?
-- Are there any emoji, icons, or decorative elements?
-- What is the overall color scheme and mood?
+VARIATION: ${variationNotes[patternIndex] || variationNotes[0]}
 
-Now create a NEW Instagram Story image (9:16 vertical) that follows the SAME text/design pattern but with a SCENIC BACKGROUND instead of a person.
-${atmosphereNote ? `Background scene direction: ${atmosphereNote}` : 'Use an atmospheric, professional background scene that complements the text.'}
+${logoPalette && logoPalette.length > 0 ? `Brand colors: ${logoPalette.join(', ')}` : ''}
 
-The text content should be:
-"${textMessage}"`
-    : `Look at this reference Instagram Story image very carefully.
-
-ANALYZE its structure:
-- How much of the frame does the person/subject fill?
-- Where exactly is the person positioned?
-- Where is the text placed? (top/bottom/middle/overlay?)
-- Are there text containers (boxes, banners)? What shape and color?
-- Does the photo fill the entire screen or is there a separate background?
-- Are there any emoji, icons, or decorative elements?
-
-Now create a NEW Instagram Story image (9:16 vertical) that follows the EXACT SAME structural pattern, but with this text:
-"${textMessage}"`;
-
-  const userPrompt = `${analysisBlock}
-
-${styleVariations[patternIndex] || styleVariations[0]}
-
-${!backgroundOnly && atmosphereNote ? `Additional style direction: ${atmosphereNote}` : ''}
-${logoPalette && logoPalette.length > 0 ? `Brand color palette to incorporate: ${logoPalette.join(', ')}` : ''}
-
-CRITICAL: The text containers, text style, text position, and decorative elements MUST match the reference.${backgroundOnly ? ' Replace the person/subject area with the described background scene.' : ' The structural layout (person size, person position) MUST also match.'} A viewer scrolling through Instagram should feel this was made by the same person using the same template.
+CRITICAL REMINDERS:
+- The person/subject MUST occupy exactly ${structure.person_frame_percentage}% of the frame
+- The person MUST be in a "${structure.person_pose}" pose, looking "${structure.person_gaze_direction}"
+- Text MUST be in ${structure.text_container_color} ${structure.text_container_shape} containers at the ${structure.text_position}
+- Text MUST be ${structure.text_weight} ${structure.text_color}
 
 Generate the image now.`;
 
@@ -513,7 +617,7 @@ Generate the image now.`;
         },
       ],
       config: {
-        systemInstruction: REFERENCE_STORY_SYSTEM_PROMPT,
+        systemInstruction: systemPrompt,
         responseModalities: ['IMAGE', 'TEXT'],
       },
     });
@@ -548,22 +652,6 @@ Generate the image now.`;
 
 // --- 素材画像 + 参考ストーリーズ 両方を使った生成 ---
 
-const COMBINED_SYSTEM_PROMPT = `You are an expert Instagram Story designer. You will receive TWO reference images:
-1. IMAGE 1 (FIRST image): A TEMPLATE photo of a person or product — use this person/product as the SUBJECT
-2. IMAGE 2 (SECOND image): A REFERENCE Instagram Story — use this as the DESIGN TEMPLATE (layout, text style, text containers, colors)
-
-Your job is to create a NEW Instagram Story image (9:16 vertical, 1080x1920px) that combines:
-- The PERSON/PRODUCT from Image 1 (the template photo)
-- The DESIGN STYLE from Image 2 (the reference story)
-
-CRITICAL RULES:
-1. The person/product from Image 1 MUST appear in the generated image
-2. The layout structure, text container style, text positioning, and color scheme MUST match Image 2
-3. Place the person/product in the same area/proportion as the subject in Image 2
-4. Use the text containers (shape, color, position) exactly as shown in Image 2
-5. The result should look like the person from Image 1 was photographed for the design template of Image 2
-6. Output only the generated image`;
-
 async function generateImageFromCombined(
   templateBase64: string,
   templateMimeType: string,
@@ -580,47 +668,52 @@ async function generateImageFromCombined(
   const imageModel =
     import.meta.env.VITE_GEMINI_IMAGE_MODEL || 'nano-banana-pro-preview';
 
-  const styleVariations = [
-    `VARIATION: Faithful combination — place the person from Image 1 into the exact layout structure of Image 2. Match Image 2's text containers, text position, and color scheme precisely.`,
+  // まず参考画像を構造分析
+  const structure = await analyzeReferenceStructure(referenceBase64, referenceMimeType);
+  const structureDesc = buildStructureDescription(structure);
 
-    `VARIATION: Slightly different angle — use the person from Image 1 but in a slightly different pose/crop. Keep Image 2's design template (text containers, text position, colors) exactly the same.`,
+  const systemPrompt = `You are an expert Instagram Story designer. You will receive TWO images and a detailed structural specification:
+1. IMAGE 1 (FIRST): A TEMPLATE photo — use this person/product as the SUBJECT
+2. IMAGE 2 (SECOND): A REFERENCE Instagram Story — visual style reference
 
-    `VARIATION: Alternative text arrangement — use the person from Image 1 in Image 2's layout. Keep the same text container style but try a slightly different text arrangement (e.g., different line breaks or text box grouping).`,
+You MUST create a NEW image (9:16 vertical, 1080x1920px) where:
+- The PERSON from Image 1 appears in the generated image
+- The LAYOUT follows the structural specification EXACTLY (person position, pose, text containers, colors)
+- The person from Image 1 should be placed in the pose and position described in the specification
+
+Output only the generated image.`;
+
+  const variationNotes = [
+    'Follow the specification exactly. Place the person from Image 1 into this exact layout.',
+    'Follow the specification but adjust the person\'s angle slightly (5-10 degrees). Layout otherwise identical.',
+    'Follow the specification exactly but try a minor text container variation. Person placement identical.',
   ];
 
-  const userPrompt = backgroundOnly
-    ? `Image 1 is a template photo (IGNORE the person — use only the color palette and mood).
-Image 2 is a reference Instagram Story (use its DESIGN TEMPLATE: text containers, text position, layout structure).
+  const subjectInstruction = backgroundOnly
+    ? `SUBJECT: Ignore the person in Image 1. Use only Image 1's color palette and mood. Fill the person area with a scenic background.
+${atmosphereNote ? `Scene: ${atmosphereNote}` : ''}`
+    : `SUBJECT: Use the PERSON from Image 1. Place them in the exact pose and position described below.
+${atmosphereNote ? `Additional style: ${atmosphereNote}` : ''}`;
 
-Create a NEW Instagram Story (9:16 vertical) that combines:
-- The COLOR PALETTE and mood from Image 1
-- The DESIGN TEMPLATE (text containers, text style, text position) from Image 2
-- A scenic/atmospheric BACKGROUND instead of a person
-${atmosphereNote ? `Background scene: ${atmosphereNote}` : ''}
+  const userPrompt = `Image 1 is the person/product to feature.
+Image 2 is the design reference.
 
-Text content: "${textMessage}"
+${structureDesc}
 
-${styleVariations[patternIndex] || styleVariations[0]}
-${logoPalette && logoPalette.length > 0 ? `Brand color palette: ${logoPalette.join(', ')}` : ''}
+${subjectInstruction}
 
-CRITICAL: DO NOT include any person. Use Image 2's text containers and layout with a background scene.
+TEXT CONTENT: "${textMessage}"
 
-Generate the image now.`
-    : `Image 1 is a template photo of a PERSON/PRODUCT — this is the SUBJECT to include.
-Image 2 is a reference Instagram Story — this is the DESIGN TEMPLATE to follow.
+VARIATION: ${variationNotes[patternIndex] || variationNotes[0]}
 
-Create a NEW Instagram Story (9:16 vertical) that:
-- Features the SAME PERSON/PRODUCT from Image 1
-- Uses the EXACT SAME design template from Image 2 (text containers, text position, layout, colors)
+${logoPalette && logoPalette.length > 0 ? `Brand colors: ${logoPalette.join(', ')}` : ''}
 
-Text content: "${textMessage}"
-
-${styleVariations[patternIndex] || styleVariations[0]}
-
-${atmosphereNote ? `Additional style direction: ${atmosphereNote}` : ''}
-${logoPalette && logoPalette.length > 0 ? `Brand color palette: ${logoPalette.join(', ')}` : ''}
-
-CRITICAL: The person from Image 1 MUST appear. The design (text containers, text position, colors) MUST match Image 2.
+CRITICAL:
+- Person from Image 1 MUST appear (unless background-only mode)
+- Person MUST occupy ${structure.person_frame_percentage}% of frame, positioned ${structure.person_position}
+- Person MUST be in "${structure.person_pose}" pose, looking "${structure.person_gaze_direction}"
+- Text in ${structure.text_container_color} ${structure.text_container_shape} at ${structure.text_position}
+- Text: ${structure.text_weight} ${structure.text_color}
 
 Generate the image now.`;
 
@@ -648,7 +741,7 @@ Generate the image now.`;
         },
       ],
       config: {
-        systemInstruction: COMBINED_SYSTEM_PROMPT,
+        systemInstruction: systemPrompt,
         responseModalities: ['IMAGE', 'TEXT'],
       },
     });
