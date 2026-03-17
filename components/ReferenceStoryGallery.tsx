@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import { ReferenceStory } from '../types';
 import { saveReferenceStory, deleteReferenceStory } from '../utils/referenceStoryStorage';
 
@@ -23,16 +23,15 @@ export const ReferenceStoryGallery: React.FC<ReferenceStoryGalleryProps> = ({
     total: number;
   } | null>(null);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  const processFiles = useCallback(async (fileList: File[]) => {
+    if (fileList.length === 0) return;
 
     setIsUploading(true);
-    const total = files.length;
+    const total = fileList.length;
     const newStories: ReferenceStory[] = [];
 
     for (let i = 0; i < total; i++) {
-      const file = files[i];
+      const file = fileList[i];
       try {
         setUploadStatus({ current: i + 1, total });
         const name = file.name.replace(/\.[^.]+$/, '');
@@ -48,8 +47,32 @@ export const ReferenceStoryGallery: React.FC<ReferenceStoryGalleryProps> = ({
       onReferenceStoriesChange([...newStories, ...referenceStories]);
     }
     setIsUploading(false);
+  }, [referenceStories, onReferenceStoriesChange]);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    await processFiles(Array.from(files));
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
+
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    if (isUploading) return;
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const imageFiles: File[] = [];
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      processFiles(imageFiles);
+    }
+  }, [isUploading, processFiles]);
 
   const handleDelete = async (id: string) => {
     try {
@@ -62,13 +85,14 @@ export const ReferenceStoryGallery: React.FC<ReferenceStoryGalleryProps> = ({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 outline-none" tabIndex={0} onPaste={handlePaste}>
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
           <svg className="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
           </svg>
           参考ストーリーズを選択
+          <span className="text-[10px] text-slate-500 font-normal ml-1">Ctrl+Vで貼り付け</span>
         </h3>
         {referenceStories.length > 0 && (
           <button
