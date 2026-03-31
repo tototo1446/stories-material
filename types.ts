@@ -84,3 +84,10 @@ export interface ReferenceStory {
   thumbnailUrl: string;
   createdAt: number;
 }
+
+export interface MoodPreset {
+  id: string;
+  label: string;
+  icon: string;
+  promptHint: string;
+}

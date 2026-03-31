@@ -12,6 +12,16 @@ dist
 dist-ssr
 *.local
 
+# Large media / analysis artifacts
+*.mov
+*.mp4
+*.avi
+*.mkv
+audio.mp3
+frames/
+analysis_frames/
+analysis_audio/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

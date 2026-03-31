@@ -1,5 +1,45 @@
 
 import React from 'react';
+import { MoodPreset } from './types';
+
+export const MOOD_PRESETS: MoodPreset[] = [
+  {
+    id: 'focus',
+    label: '集中・作業',
+    icon: '💻',
+    promptHint: '集中感のあるワークスペース、PCデスク、モニターの光、プロダクティブな雰囲気',
+  },
+  {
+    id: 'relax',
+    label: 'リラックス',
+    icon: '🌿',
+    promptHint: '穏やか、自然光、ナチュラルで温かみのある色調、リラックスした雰囲気',
+  },
+  {
+    id: 'urgent',
+    label: '緊急・締切',
+    icon: '🔥',
+    promptHint: '大胆、注目を引く、高コントラスト、ダイナミック、赤やオレンジ系',
+  },
+  {
+    id: 'luxury',
+    label: '高級・プレミアム',
+    icon: '✨',
+    promptHint: '高級感、ダーク背景にゴールドのアクセント、エレガント',
+  },
+  {
+    id: 'pop',
+    label: 'ポップ・カジュアル',
+    icon: '🎨',
+    promptHint: 'ポップ、明るくカラフル、楽しい、エネルギッシュ、ビビッドカラー',
+  },
+  {
+    id: 'natural',
+    label: 'ナチュラル',
+    icon: '🍃',
+    promptHint: 'オーガニック、アースカラー、ミニマル、自然素材のテクスチャ',
+  },
+];
 
 export const FONT_MAP: Record<string, { family: string; weight: number }> = {
   'Noto Sans JP Bold': { family: "'Noto Sans JP', sans-serif", weight: 700 },

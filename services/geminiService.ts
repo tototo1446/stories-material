@@ -70,12 +70,20 @@ async function generatePromptVariations(
   userMessage: string,
   atmosphereNote: string,
   brandColor: string,
-  logoPalette?: string[]
+  logoPalette?: string[],
+  backgroundOnly?: boolean
 ): Promise<PromptVariation[]> {
   const ai = getGeminiClient();
 
   const paletteSection = logoPalette && logoPalette.length > 0
     ? `\n## ブランドカラーパレット（ロゴから抽出）\n${logoPalette.join(', ')}\nこれらの色をデザインのアクセントやグラデーションに積極的に活用してください。ブランドの世界観を反映した配色にしてください。`
+    : '';
+
+  const backgroundOnlyConstraint = backgroundOnly
+    ? `\n\n## 重要な制約（背景のみモード）
+- 人物、人間のシルエット、体の一部を絶対に含めないでください
+- 風景、ワークスペース、抽象デザイン、テクスチャなど「シーン背景」のみで構成してください
+- ネガティブプロンプトに必ず「no people, no human figures, no silhouettes, no body parts, no hands, no faces」を追加してください`
     : '';
 
   const userPrompt = `## ユーザーのメッセージ（画像上に重ねるテキスト）
@@ -90,11 +98,13 @@ ${brandColor}${paletteSection}
 上記の情報から、背景画像生成用の英語プロンプトを3パターン作成してください。
 メッセージの内容に合った雰囲気の背景を設計してください。`;
 
+  const systemPrompt = PROMPT_VARIATION_SYSTEM + backgroundOnlyConstraint;
+
   const response = await ai.models.generateContent({
     model: 'gemini-2.0-flash',
     contents: userPrompt,
     config: {
-      systemInstruction: PROMPT_VARIATION_SYSTEM,
+      systemInstruction: systemPrompt,
       temperature: 0.8,
       responseMimeType: 'application/json',
       responseSchema: {
@@ -1027,7 +1037,8 @@ export const generateStoryBackgrounds = async (
       message,
       atmosphereNote,
       brandColor,
-      logoPalette
+      logoPalette,
+      backgroundOnly
     );
 
     console.log('プロンプト生成結果:', JSON.stringify(variations, null, 2));
