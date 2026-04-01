@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { BrandConfig, BrandPreset, GeneratedImage, SavedImage, TemplateImage, ReferenceStory } from './types';
-import { SAMPLE_SCRIPTS, FONT_MAP, DEFAULT_FONT, MOOD_PRESETS } from './constants';
+import { SAMPLE_SCRIPTS, FONT_MAP, DEFAULT_FONT } from './constants';
 import { generateStoryBackgrounds } from './services/imageGenerationService';
 import { InstagramOverlay } from './components/InstagramOverlay';
 import { TextOverlay } from './components/TextOverlay';
@@ -61,7 +61,7 @@ const App: React.FC = () => {
   const [referenceStories, setReferenceStories] = useState<ReferenceStory[]>([]);
   const [selectedReferenceId, setSelectedReferenceId] = useState<string | null>(null);
   const [backgroundOnly, setBackgroundOnly] = useState(false);
-  const [selectedMoodId, setSelectedMoodId] = useState<string | null>(null);
+  const [situation, setSituation] = useState('');
 
   const [isInpaintingMode, setIsInpaintingMode] = useState(false);
   const [isInpainting, setIsInpainting] = useState(false);
@@ -343,7 +343,8 @@ const App: React.FC = () => {
         selectedTemplate?.dataUrl,
         logoPalette,
         selectedReference?.dataUrl,
-        backgroundOnly
+        backgroundOnly,
+        situation
       );
 
       if (newImages.length === 0) {
@@ -623,31 +624,16 @@ const App: React.FC = () => {
 
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-slate-300">
-                      雰囲気プリセット <span className="text-slate-500">(任意)</span>
+                      シチュエーション <span className="text-slate-500">(任意)</span>
                     </label>
-                    <div className="flex flex-wrap gap-2">
-                      {MOOD_PRESETS.map((preset) => (
-                        <button
-                          key={preset.id}
-                          onClick={() => {
-                            if (selectedMoodId === preset.id) {
-                              setSelectedMoodId(null);
-                              setAtmosphereNote('');
-                            } else {
-                              setSelectedMoodId(preset.id);
-                              setAtmosphereNote(preset.promptHint);
-                            }
-                          }}
-                          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                            selectedMoodId === preset.id
-                              ? 'bg-indigo-600 text-white ring-2 ring-indigo-400'
-                              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                          }`}
-                        >
-                          {preset.icon} {preset.label}
-                        </button>
-                      ))}
-                    </div>
+                    <input
+                      type="text"
+                      value={situation}
+                      onChange={(e) => setSituation(e.target.value)}
+                      placeholder="例：海辺、PCの前、カフェ、ジム、オフィス、夜景..."
+                      className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
+                    />
+                    <p className="text-[10px] text-slate-500">場面や場所を入力すると、AIが文脈に合った背景を生成します</p>
                   </div>
 
                   <div className="space-y-2">
@@ -657,11 +643,8 @@ const App: React.FC = () => {
                     <input
                       type="text"
                       value={atmosphereNote}
-                      onChange={(e) => {
-                        setAtmosphereNote(e.target.value);
-                        setSelectedMoodId(null);
-                      }}
-                      placeholder={backgroundOnly ? '例：海、カフェ、夜景、ワークスペース...' : '例：文字を強調して、背景白、ポップな雰囲気...'}
+                      onChange={(e) => setAtmosphereNote(e.target.value)}
+                      placeholder="例：文字を強調して、背景白、ポップな雰囲気..."
                       className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
                     />
                   </div>
