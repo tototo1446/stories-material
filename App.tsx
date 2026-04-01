@@ -366,13 +366,18 @@ const App: React.FC = () => {
 
         // サーバーに自動保存
         setProgressMessage('画像をサーバーに保存中...');
+        let saveFailCount = 0;
         for (const img of finalImages) {
           try {
             const saved = await saveGeneratedImage(img, { originalMessage: message });
             setSavedImages(prev => [saved, ...prev]);
           } catch (err) {
             console.error('画像の保存に失敗:', err);
+            saveFailCount++;
           }
+        }
+        if (saveFailCount > 0) {
+          showToast(`${saveFailCount}枚の画像のサーバー保存に失敗しました。画像は表示されていますが、履歴には残りません。`, 'error', 8000);
         }
       }
     } catch (error) {
