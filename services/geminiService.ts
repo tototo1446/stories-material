@@ -87,7 +87,8 @@ async function generatePromptVariations(
   brandColor: string,
   logoPalette?: string[],
   backgroundOnly?: boolean,
-  situation?: string
+  situation?: string,
+  knowledgeText?: string
 ): Promise<PromptVariation[]> {
   const ai = getGeminiClient();
 
@@ -106,9 +107,13 @@ async function generatePromptVariations(
     ? `\n## シチュエーション（場面・場所）【最重要】\n「${situation}」\nこの場面を3パターンすべてで忠実に再現してください。この場所に実際に存在する具体的なオブジェクト・環境・光・素材を詳細にプロンプトへ盛り込んでください。`
     : '';
 
+  const knowledgeSection = knowledgeText
+    ? `\n## 運用ナレッジ（参考情報）\n以下は過去の運用ノウハウや成功事例です。この知見を考慮して、より効果的なプロンプトを生成してください。\n${knowledgeText}`
+    : '';
+
   const userPrompt = `## ユーザーのメッセージ（画像上に重ねるテキスト）
 ${userMessage}
-${situationSection}
+${situationSection}${knowledgeSection}
 ## 雰囲気の注釈
 ${atmosphereNote || '指定なし（バランスの良いデザイン）'}
 
@@ -823,7 +828,8 @@ export const generateStoryBackgrounds = async (
   logoPalette?: string[],
   referenceStoryUrl?: string,
   backgroundOnly?: boolean,
-  situation?: string
+  situation?: string,
+  knowledgeText?: string
 ): Promise<GeneratedImage[]> => {
   if (!message) {
     throw new Error('描きたいメッセージを入力してください。');
@@ -1061,7 +1067,8 @@ export const generateStoryBackgrounds = async (
       brandColor,
       logoPalette,
       backgroundOnly,
-      situation
+      situation,
+      knowledgeText
     );
 
     console.log('プロンプト生成結果:', JSON.stringify(variations, null, 2));

@@ -84,3 +84,14 @@ export interface ReferenceStory {
   thumbnailUrl: string;
   createdAt: number;
 }
+
+export interface KnowledgeMaterial {
+  id: string;
+  title: string;
+  contentText: string;
+  sourceType: 'text' | 'file';
+  fileUrl?: string;
+  fileName?: string;
+  fileSize?: number;
+  createdAt: number;
+}

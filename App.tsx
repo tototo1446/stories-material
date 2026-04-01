@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { BrandConfig, BrandPreset, GeneratedImage, SavedImage, TemplateImage, ReferenceStory } from './types';
+import { BrandConfig, BrandPreset, GeneratedImage, SavedImage, TemplateImage, ReferenceStory, KnowledgeMaterial } from './types';
 import { SAMPLE_SCRIPTS, FONT_MAP, DEFAULT_FONT } from './constants';
 import { generateStoryBackgrounds } from './services/imageGenerationService';
 import { InstagramOverlay } from './components/InstagramOverlay';
@@ -18,8 +18,10 @@ import { loadAllTemplates } from './utils/templateStorage';
 import { loadAllReferenceStories } from './utils/referenceStoryStorage';
 import { extractColorsFromImage } from './utils/colorExtraction';
 import { saveGeneratedImage, loadSavedImages } from './utils/generatedImageStorage';
+import { loadAllKnowledge, buildKnowledgeText } from './utils/knowledgeStorage';
 import { inpaintImage } from './utils/inpainting';
 import { InpaintingCanvas } from './components/InpaintingCanvas';
+import { KnowledgeManager } from './components/KnowledgeManager';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'brand' | 'gallery'>('dashboard');
@@ -62,6 +64,7 @@ const App: React.FC = () => {
   const [selectedReferenceId, setSelectedReferenceId] = useState<string | null>(null);
   const [backgroundOnly, setBackgroundOnly] = useState(false);
   const [situation, setSituation] = useState('');
+  const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeMaterial[]>([]);
 
   const [isInpaintingMode, setIsInpaintingMode] = useState(false);
   const [isInpainting, setIsInpainting] = useState(false);
@@ -154,6 +157,13 @@ const App: React.FC = () => {
   useEffect(() => {
     loadSavedImages()
       .then(setSavedImages)
+      .catch(console.error);
+  }, []);
+
+  // ナレッジの読み込み
+  useEffect(() => {
+    loadAllKnowledge()
+      .then(setKnowledgeItems)
       .catch(console.error);
   }, []);
 
@@ -328,6 +338,8 @@ const App: React.FC = () => {
         ? brand.extractedColors.palette
         : undefined;
 
+      const knowledgeText = buildKnowledgeText(knowledgeItems);
+
       const newImages = await generateStoryBackgrounds(
         message,
         atmosphereNote,
@@ -344,7 +356,8 @@ const App: React.FC = () => {
         logoPalette,
         selectedReference?.dataUrl,
         backgroundOnly,
-        situation
+        situation,
+        knowledgeText
       );
 
       if (newImages.length === 0) {
@@ -603,6 +616,14 @@ const App: React.FC = () => {
                     selectedReferenceId={selectedReferenceId}
                     onSelect={setSelectedReferenceId}
                     onReferenceStoriesChange={setReferenceStories}
+                  />
+                </div>
+
+                <div className="bg-slate-800/30 p-6 rounded-3xl border border-slate-700/50 backdrop-blur-sm mb-8">
+                  <KnowledgeManager
+                    knowledgeItems={knowledgeItems}
+                    onKnowledgeChange={setKnowledgeItems}
+                    onToast={showToast}
                   />
                 </div>
 
