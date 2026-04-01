@@ -38,17 +38,32 @@ function getGeminiClient(): GoogleGenAI {
 
 // --- Step 1: 3パターンのプロンプト生成 ---
 
-const PROMPT_VARIATION_SYSTEM = `あなたは画像生成AI用のプロンプトエンジニアです。
+const PROMPT_VARIATION_SYSTEM_BASE = `あなたは画像生成AI用のプロンプトエンジニアです。
 Instagramストーリーズ（9:16、1080x1920px）用の背景画像を生成するための英語プロンプトを3パターン作成してください。
 
 ## 目的
-ユーザーが入力したメッセージを画像の上に重ねて表示するため、背景画像は「文字が読みやすい余白」を確保する必要があります。
+ユーザーが入力したメッセージを画像の上に重ねて表示するため、背景画像は「文字が読みやすい余白」を確保する必要があります。`;
 
+const VARIATION_POLICY_DEFAULT = `
 ## 3パターンのバリエーション方針
 - パターン1: シンプル・クリーンなデザイン（単色背景やソフトグラデーション）
 - パターン2: 適度な装飾を加えたデザイン（抽象的なパターンやテクスチャ）
-- パターン3: よりビジュアル豊かなデザイン（写真風やイラスト的要素あり）
+- パターン3: よりビジュアル豊かなデザイン（写真風やイラスト的要素あり）`;
 
+const VARIATION_POLICY_WITH_SITUATION = `
+## 3パターンのバリエーション方針（シチュエーション指定あり）
+ユーザーが具体的なシチュエーション（場面・場所）を指定しています。
+3パターンすべてでそのシチュエーションを忠実に再現してください。
+- パターン1: そのシチュエーションのリアルな写真風（実際にその場にいるような臨場感）
+- パターン2: そのシチュエーションを少しスタイリッシュに演出（被写界深度ボケ、光の演出等）
+- パターン3: そのシチュエーションの別アングル・別視点（俯瞰、クローズアップ等）
+
+### 重要
+- 3パターンすべてで、指定されたシチュエーションの場所・物体・環境を具体的に描写すること
+- シチュエーションに登場する具体的なオブジェクト（例：PC、コーヒーカップ、海、デスクなど）を必ずプロンプトに含めること
+- 抽象的なグラデーションやパターンに逃げず、シチュエーションを視覚的に表現すること`;
+
+const PROMPT_VARIATION_COMMON = `
 ## 構図パターン
 各パターンに最適な構図を1つ選択:
 - center_focus: 中央に大きな空白、上下端のみに装飾
@@ -88,7 +103,7 @@ async function generatePromptVariations(
     : '';
 
   const situationSection = situation
-    ? `\n## シチュエーション（場面・場所）\n${situation}\nこのシチュエーションを背景のシーン設定として反映してください。場所の雰囲気、光の質感、周囲の要素を具体的にプロンプトに盛り込んでください。`
+    ? `\n## シチュエーション（場面・場所）【最重要】\n「${situation}」\nこの場面を3パターンすべてで忠実に再現してください。この場所に実際に存在する具体的なオブジェクト・環境・光・素材を詳細にプロンプトへ盛り込んでください。`
     : '';
 
   const userPrompt = `## ユーザーのメッセージ（画像上に重ねるテキスト）
@@ -103,7 +118,8 @@ ${brandColor}${paletteSection}
 上記の情報から、背景画像生成用の英語プロンプトを3パターン作成してください。
 メッセージの内容に合った雰囲気の背景を設計してください。`;
 
-  const systemPrompt = PROMPT_VARIATION_SYSTEM + backgroundOnlyConstraint;
+  const variationPolicy = situation ? VARIATION_POLICY_WITH_SITUATION : VARIATION_POLICY_DEFAULT;
+  const systemPrompt = PROMPT_VARIATION_SYSTEM_BASE + variationPolicy + PROMPT_VARIATION_COMMON + backgroundOnlyConstraint;
 
   const response = await ai.models.generateContent({
     model: 'gemini-2.0-flash',
