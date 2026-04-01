@@ -127,7 +127,7 @@ ${brandColor}${paletteSection}
   const systemPrompt = PROMPT_VARIATION_SYSTEM_BASE + variationPolicy + PROMPT_VARIATION_COMMON + backgroundOnlyConstraint;
 
   const response = await ai.models.generateContent({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-2.5-flash',
     contents: userPrompt,
     config: {
       systemInstruction: systemPrompt,
@@ -459,7 +459,7 @@ async function analyzeReferenceStructure(
   const ai = getGeminiClient();
 
   const response = await ai.models.generateContent({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-2.5-flash',
     contents: [
       {
         role: 'user',
